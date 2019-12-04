@@ -234,8 +234,75 @@ fn day3() {
     println!("3b: {}", delay);
 }
 
+fn digits(input : u32) -> Vec<u32> {
+    let mut tmp = input;
+    let mut digits = Vec::new();
+    loop {
+        digits.push(tmp % 10);
+        tmp /= 10;
+        if tmp == 0 {
+            break;
+        }
+    }
+    digits.reverse();
+    digits
+}
+
+fn valid_password(password : u32) -> bool {
+    let digits = digits(password);
+    if digits.len() != 6 {
+        return false;
+    }
+    let mut prev = 0;
+    let mut has_double = false;
+    for d in digits {
+        if d < prev {
+            return false;
+        }
+        if d == prev {
+            has_double = true;
+        }
+        prev = d
+    }
+
+    has_double
+}
+
+fn valid_password2(input : u32) -> bool {
+    if !valid_password(input) {
+        return false;
+    }
+
+    let digits = digits(input);
+    let mut same_count = 1;
+    let mut prev = 0;
+    for d in digits {
+        if d == prev {
+            same_count += 1;
+        } else {
+            if same_count == 2 {
+                return true;
+            }
+            same_count = 1;
+        }
+        prev = d;
+    }
+    same_count == 2
+}
+
+fn day4() {
+    let min = 264360;
+    let max = 746325;
+
+    let count = (min..max+1).filter(|&pw| valid_password(pw)).count();
+    println!("4a: {}", count);
+
+    let count = (min..max+1).filter(|&pw| valid_password2(pw)).count();
+    println!("4a: {}", count);
+}
+
 fn main() {
-    day3();
+    day4();
 }
 
 #[cfg(test)]
@@ -278,5 +345,16 @@ mod tests {
         let wire2 = "U98,R91,D20,R16,D67,R40,U7,R15,U6,R7";
         assert_eq!(closest_intersection(wire1, wire2), 135);
         assert_eq!(min_delay(wire1, wire2), 410);
+    }
+
+    #[test]
+    fn test_day4() {
+        assert!(valid_password(111111));
+        assert!(!valid_password(223450));
+        assert!(!valid_password(123789));
+
+        assert!(valid_password2(112233));
+        assert!(!valid_password2(123444));
+        assert!(valid_password2(111122));
     }
 }
