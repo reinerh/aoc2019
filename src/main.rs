@@ -2,6 +2,72 @@
 
 use std::fs;
 
+#[derive(Eq, PartialEq, Clone, Copy)]
+struct Point {
+    x : i32,
+    y : i32,
+}
+
+struct Line {
+    p1 : Point,
+    p2 : Point,
+}
+
+impl Point {
+    fn distance_origin(&self) -> i32 {
+        self.x.abs() + self.y.abs()
+    }
+}
+
+impl Line {
+    fn horizontal(&self) -> bool {
+        self.p1.y == self.p2.y
+    }
+
+    fn length(&self) -> i32 {
+        match self.horizontal() {
+            true => (self.p1.x - self.p2.x).abs(),
+            false => (self.p1.y - self.p2.y).abs(),
+        }
+    }
+
+    fn contains_point(&self, point : &Point) -> bool {
+        if self.horizontal() && self.p1.y != point.y {
+            return false;
+        } else if !self.horizontal() && self.p1.x != point.x {
+            return false;
+        }
+
+        match self.horizontal() {
+            true => {
+                self.p1.x <= point.x && self.p2.x >= point.x
+             || self.p2.x <= point.x && self.p1.x >= point.x
+            }
+            false => {
+                self.p1.y <= point.y && self.p2.y >= point.y
+             || self.p2.y <= point.y && self.p1.y >= point.y
+            }
+        }
+    }
+
+    fn intersection(&self, other : &Line) -> Option<Point> {
+        if self.horizontal() == other.horizontal() {
+            return None;
+        }
+
+        let point = match self.horizontal() {
+            true => Point { x : other.p1.x, y : self.p1.y },
+            false => Point { x : self.p1.x, y : other.p1.y },
+        };
+
+        if self.contains_point(&point) && other.contains_point(&point) {
+            Some(point)
+        } else {
+            None
+        }
+    }
+}
+
 fn read_file(file : &str) -> String {
     fs::read_to_string(file).unwrap()
 }
@@ -88,8 +154,88 @@ fn day2() {
     }
 }
 
+fn parse_lines(wire : &str) -> Vec<Line> {
+    let mut lines = Vec::new();
+
+    let mut p1 = Point { x : 0, y : 0 };
+    for next in wire.split(',') {
+        let dist = next[1..].parse::<i32>().unwrap();
+
+        let mut p2 = Point { x : p1.x, y : p1.y };
+        match next.chars().next().unwrap() {
+            'R' => p2.x += dist,
+            'L' => p2.x -= dist,
+            'U' => p2.y += dist,
+            'D' => p2.y -= dist,
+            _ => panic!("unexpected direction"),
+        };
+        lines.push(Line { p1, p2 });
+        p1 = p2;
+    }
+
+    lines
+}
+
+fn intersections(lines1 : &Vec<Line>, lines2 : &Vec<Line>) -> Vec<Point> {
+    let mut points = Vec::new();
+    for line1 in lines1 {
+        for line2 in lines2 {
+            if let Some(p) = line1.intersection(line2) {
+                points.push(p);
+            }
+        }
+    }
+
+    points
+}
+
+fn closest_intersection(wire1 : &str, wire2 : &str) -> i32 {
+    let lines1 = parse_lines(wire1);
+    let lines2 = parse_lines(wire2);
+    intersections(&lines1, &lines2).iter()
+                                   .map(|p| p.distance_origin())
+                                   .filter(|&x| x > 0)
+                                   .min().unwrap()
+}
+
+fn delay_to_point(lines : &Vec<Line>, p : &Point) -> i32 {
+    let mut delay = 0;
+    for line in lines {
+        if line.contains_point(&p) {
+            delay += (line.p1.distance_origin() - p.distance_origin()).abs();
+            break;
+        }
+        delay += line.length();
+    }
+
+    delay
+}
+
+fn min_delay(wire1 : &str, wire2 : &str) -> i32 {
+    let lines1 = parse_lines(wire1);
+    let lines2 = parse_lines(wire2);
+    let points = intersections(&lines1, &lines2);
+
+    points.iter()
+          .map(|p| delay_to_point(&lines1, &p) + delay_to_point(&lines2, &p))
+          .filter(|&d| d > 0)
+          .min().unwrap()
+}
+
+fn day3() {
+    let mut input = read_file("input3");
+    input.pop();
+    let wires : Vec<&str> = input.split('\n').collect();
+
+    let distance = closest_intersection(wires[0], wires[1]);
+    println!("3a: {}", distance);
+
+    let delay = min_delay(wires[0], wires[1]);
+    println!("3b: {}", delay);
+}
+
 fn main() {
-    day2();
+    day3();
 }
 
 #[cfg(test)]
@@ -114,5 +260,23 @@ mod tests {
         assert_eq!(run_program(vec!(2,3,0,3,99)), vec!(2,3,0,6,99));
         assert_eq!(run_program(vec!(2,4,4,5,99,0)), vec!(2,4,4,5,99,9801));
         assert_eq!(run_program(vec!(1,1,1,4,99,5,6,0,99)), vec!(30,1,1,4,2,5,6,0,99));
+    }
+
+    #[test]
+    fn test_day3() {
+        let wire1 = "R8,U5,L5,D3";
+        let wire2 = "U7,R6,D4,L4";
+        assert_eq!(closest_intersection(wire1, wire2), 6);
+        assert_eq!(min_delay(wire1, wire2), 30);
+
+        let wire1 = "R75,D30,R83,U83,L12,D49,R71,U7,L72";
+        let wire2 = "U62,R66,U55,R34,D71,R55,D58,R83";
+        assert_eq!(closest_intersection(wire1, wire2), 159);
+        assert_eq!(min_delay(wire1, wire2), 610);
+
+        let wire1 = "R98,U47,R26,D63,R33,U87,L62,D20,R33,U53,R51";
+        let wire2 = "U98,R91,D20,R16,D67,R40,U7,R15,U6,R7";
+        assert_eq!(closest_intersection(wire1, wire2), 135);
+        assert_eq!(min_delay(wire1, wire2), 410);
     }
 }
