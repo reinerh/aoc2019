@@ -106,33 +106,109 @@ fn day1() {
     println!("1b: {}", sum2);
 }
 
-fn run_program(input : Vec<usize>) -> Vec<usize> {
-    let mut mem = input.clone();
-    for i in 0..mem.len()/4 {
-        let pos = i * 4;
-        let opcode = mem[pos];
-        if opcode == 99 {
-            break;
+fn get_operands(mem : &Vec<i32>, inputs : Vec<i32>, mode : i32) -> Vec<i32> {
+    let mut tmp = mode;
+    let mut ops = Vec::new();
+    for i in inputs {
+        let m = tmp % 10;
+        tmp /= 10;
+        match m {
+            0 => ops.push(mem[i as usize]),
+            1 => ops.push(i),
+            _ => panic!("invalid mode")
         }
+    }
+    ops
+}
 
-        let op1 = mem[pos+1];
-        let op2 = mem[pos+2];
-        let op3 = mem[pos+3];
+fn run_program_io(input : Vec<i32>, stdin : &Vec<&str>, stdout : &mut Vec<i32>) -> Vec<i32> {
+    let mut stdin_iter = stdin.iter();
+    let mut mem = input.clone();
+    let mut ip = 0;
+    loop {
+        let instruction = mem[ip];
+        let opcode = instruction % 100;
+        let mode = instruction / 100;
+
         match opcode {
-            1 => { mem[op3] = mem[op1] + mem[op2]; }
-            2 => { mem[op3] = mem[op1] * mem[op2]; }
+            1 => { /* add */
+                let ops = get_operands(&mem, mem[ip+1..ip+3].to_vec(), mode);
+                let dst = mem[ip+3] as usize;
+                mem[dst] = ops[0] + ops[1];
+                ip += 4;
+            }
+            2 => { /* multiply */
+                let ops = get_operands(&mem, mem[ip+1..ip+3].to_vec(), mode);
+                let dst = mem[ip+3] as usize;
+                mem[dst] = ops[0] * ops[1];
+                ip += 4;
+            }
+            3 => { /* read stdin */
+                let input = stdin_iter.next().unwrap();
+                let dst = mem[ip+1] as usize;
+                mem[dst] = input.parse::<i32>().unwrap();
+                ip += 2;
+            }
+            4 => { /* write stdout */
+                let ops = get_operands(&mem, mem[ip+1..ip+2].to_vec(), mode);
+                stdout.push(ops[0]);
+                ip += 2;
+            }
+            5 => { /* jump-if-true */
+                let ops = get_operands(&mem, mem[ip+1..ip+3].to_vec(), mode);
+                if ops[0] != 0 {
+                    ip = ops[1] as usize;
+                } else {
+                    ip += 3;
+                }
+            }
+            6 => { /* jump-if-false */
+                let ops = get_operands(&mem, mem[ip+1..ip+3].to_vec(), mode);
+                if ops[0] == 0 {
+                    ip = ops[1] as usize;
+                } else {
+                    ip += 3;
+                }
+            }
+            7 => { /* less-than */
+                let ops = get_operands(&mem, mem[ip+1..ip+3].to_vec(), mode);
+                let dst = mem[ip+3] as usize;
+                if ops[0] < ops[1] {
+                    mem[dst] = 1;
+                } else {
+                    mem[dst] = 0;
+                }
+                ip += 4;
+            }
+            8 => { /* equals */
+                let ops = get_operands(&mem, mem[ip+1..ip+3].to_vec(), mode);
+                let dst = mem[ip+3] as usize;
+                if ops[0] == ops[1] {
+                    mem[dst] = 1;
+                } else {
+                    mem[dst] = 0;
+                }
+                ip += 4;
+            }
+            99 => break,
             _ => panic!("invalid opcode")
         }
     }
     mem
 }
 
+fn run_program(input : Vec<i32>) -> Vec<i32> {
+    let stdin = Vec::new();
+    let mut stdout = Vec::new();
+    run_program_io(input, &stdin, &mut stdout)
+}
+
 fn day2() {
     let mut input = read_file("input2");
     input.pop();
-    let mut program : Vec<usize> = input.split(',')
-                                       .map(|x| x.parse::<usize>().unwrap())
-                                       .collect();
+    let mut program : Vec<i32> = input.split(',')
+                                      .map(|x| x.parse::<i32>().unwrap())
+                                      .collect();
 
     program[1] = 12;
     program[2] = 2;
@@ -301,8 +377,31 @@ fn day4() {
     println!("4a: {}", count);
 }
 
+fn day5() {
+    let mut input = read_file("input5");
+    input.pop();
+    let program : Vec<i32> = input.split(',')
+                                  .map(|x| x.parse::<i32>().unwrap())
+                                  .collect();
+    let mut stdout = Vec::new();
+    let stdin = vec!["1"];
+    run_program_io(program.clone(), &stdin, &mut stdout);
+    println!("5a:");
+    for val in stdout {
+        println!("{}", val);
+    }
+
+    let mut stdout = Vec::new();
+    let stdin = vec!["5"];
+    run_program_io(program.clone(), &stdin, &mut stdout);
+    println!("5b:");
+    for val in stdout {
+        println!("{}", val);
+    }
+}
+
 fn main() {
-    day4();
+    day5();
 }
 
 #[cfg(test)]
@@ -356,5 +455,25 @@ mod tests {
         assert!(valid_password2(112233));
         assert!(!valid_password2(123444));
         assert!(valid_password2(111122));
+    }
+
+    #[test]
+    fn test_day5() {
+        let program = vec![3,21,1008,21,8,20,1005,20,22,107,8,21,20,1006,20,31,1106,0,36,98,0,0,1002,21,125,20,4,20,1105,1,46,104,999,1105,1,46,1101,1000,1,20,4,20,1105,1,46,98,99];
+
+        let stdin = vec!["4"];
+        let mut stdout = Vec::new();
+        run_program_io(program.clone(), &stdin, &mut stdout);
+        assert_eq!(stdout[0], 999);
+
+        let stdin = vec!["8"];
+        let mut stdout = Vec::new();
+        run_program_io(program.clone(), &stdin, &mut stdout);
+        assert_eq!(stdout[0], 1000);
+
+        let stdin = vec!["42"];
+        let mut stdout = Vec::new();
+        run_program_io(program.clone(), &stdin, &mut stdout);
+        assert_eq!(stdout[0], 1001);
     }
 }
