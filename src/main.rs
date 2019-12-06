@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 use std::fs;
+use std::collections::HashMap;
 
 #[derive(Eq, PartialEq, Clone, Copy)]
 struct Point {
@@ -11,6 +12,57 @@ struct Point {
 struct Line {
     p1 : Point,
     p2 : Point,
+}
+
+struct OrbitMap<'a> {
+    map : HashMap<&'a str, &'a str>,
+}
+
+impl OrbitMap<'_> {
+    fn new(input : &str) -> OrbitMap {
+        let mut orbit_map = HashMap::new();
+
+        for orbit in input.split('\n') {
+            let pair : Vec<&str> = orbit.split(')').collect();
+            orbit_map.insert(pair[1], pair[0]);
+        }
+
+        OrbitMap { map : orbit_map }
+    }
+
+    fn count_orbits(&self, orbiter : &str) -> usize {
+        if orbiter == "COM" {
+            0
+        } else {
+            self.count_orbits(self.map.get(&orbiter).unwrap()) + 1
+        }
+    }
+
+    fn count_total_orbits(&self) -> usize {
+        self.map.keys()
+                .map(|o| self.count_orbits(o))
+                .sum()
+    }
+
+    fn is_orbiting(&self, orbiter : &str, dst : &str) -> bool {
+        if orbiter == "COM" {
+            dst == "COM"
+        } else if orbiter == dst {
+            true
+        } else {
+            self.is_orbiting(self.map.get(&orbiter).unwrap(), dst)
+        }
+    }
+
+    fn count_transfers(&self, from : &str, to : &str) -> usize {
+        if from == to {
+            0
+        } else if self.is_orbiting(to, self.map.get(from).unwrap()) {
+            self.count_transfers(to, self.map.get(from).unwrap()) + 1
+        } else {
+            self.count_transfers(self.map.get(from).unwrap(), to) + 1
+        }
+    }
 }
 
 impl Point {
@@ -395,8 +447,18 @@ fn day5() {
     }
 }
 
+fn day6() {
+    let input = read_file("input6");
+    let input = input.trim_end();
+    let orbit_map = OrbitMap::new(input);
+
+    println!("6a: {}", orbit_map.count_total_orbits());
+
+    println!("6b: {}", orbit_map.count_transfers(orbit_map.map["YOU"], orbit_map.map["SAN"]));
+}
+
 fn main() {
-    day5();
+    day6();
 }
 
 #[cfg(test)]
@@ -467,5 +529,16 @@ mod tests {
         let mut stdout = Vec::new();
         run_program_io(&program, &["42"], &mut stdout);
         assert_eq!(stdout[0], 1001);
+    }
+
+    #[test]
+    fn test_day6() {
+        let input = "COM)B\nB)C\nC)D\nD)E\nE)F\nB)G\nG)H\nD)I\nE)J\nJ)K\nK)L";
+        let orbit_map = OrbitMap::new(input);
+        assert_eq!(orbit_map.count_total_orbits(), 42);
+
+        let input = input.to_string() + "\nK)YOU\nI)SAN";
+        let orbit_map = OrbitMap::new(&input);
+        assert_eq!(orbit_map.count_transfers(orbit_map.map["YOU"], orbit_map.map["SAN"]), 4);
     }
 }
