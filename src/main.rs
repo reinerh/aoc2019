@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 use std::fs;
+use std::collections::VecDeque;
 use std::collections::HashMap;
 
 #[derive(Eq, PartialEq, Clone, Copy)]
@@ -157,100 +158,130 @@ fn day1() {
     println!("1b: {}", sum2);
 }
 
-fn get_operands(mem : &[i32], inputs : &[i32], mode : i32) -> Vec<i32> {
-    let mut tmp = mode;
-    let mut ops = Vec::new();
-    for i in inputs {
-        let m = tmp % 10;
-        tmp /= 10;
-        match m {
-            0 => ops.push(mem[*i as usize]),
-            1 => ops.push(*i),
-            _ => panic!("invalid mode")
-        }
-    }
-    ops
+#[derive(PartialEq)]
+enum ProgramState {
+    RUNNING,
+    HALTED,
+    SUSPENDED,
 }
 
-fn run_program_io(input : &[i32], stdin : &[&str], stdout : &mut Vec<i32>) -> Vec<i32> {
-    let mut stdin_iter = stdin.iter();
-    let mut mem = input.to_vec();
-    let mut ip = 0;
-    loop {
-        let instruction = mem[ip];
+struct IntComputer {
+    ip : usize,
+    mem : Vec<i32>,
+    input : VecDeque<i32>,
+    output : VecDeque<i32>,
+    suspend_on_output : bool,
+}
+
+impl IntComputer {
+    fn new(program : &[i32]) -> IntComputer {
+        IntComputer {
+            ip : 0,
+            mem : program.to_vec(),
+            input : VecDeque::new(),
+            output : VecDeque::new(),
+            suspend_on_output : false,
+        }
+    }
+
+    fn get_operands(&self, inputs : &[i32], mode : i32) -> Vec<i32> {
+        let mut tmp = mode;
+        let mut ops = Vec::new();
+        for i in inputs {
+            let m = tmp % 10;
+            tmp /= 10;
+            match m {
+                0 => ops.push(self.mem[*i as usize]),
+                1 => ops.push(*i),
+                _ => panic!("invalid mode")
+            }
+        }
+        ops
+    }
+
+    fn run_program(&mut self) -> ProgramState {
+        loop {
+            let state = self.single_step();
+            if state != ProgramState::RUNNING {
+                return state;
+            }
+        }
+    }
+
+    fn single_step(&mut self) -> ProgramState {
+        let instruction = self.mem[self.ip];
         let opcode = instruction % 100;
         let mode = instruction / 100;
 
         match opcode {
             1 => { /* add */
-                let ops = get_operands(&mem, &mem[ip+1..=ip+2], mode);
-                let dst = mem[ip+3] as usize;
-                mem[dst] = ops[0] + ops[1];
-                ip += 4;
+                let ops = self.get_operands(&self.mem[self.ip+1..=self.ip+2], mode);
+                let dst = self.mem[self.ip+3] as usize;
+                self.mem[dst] = ops[0] + ops[1];
+                self.ip += 4;
             }
             2 => { /* multiply */
-                let ops = get_operands(&mem, &mem[ip+1..=ip+2], mode);
-                let dst = mem[ip+3] as usize;
-                mem[dst] = ops[0] * ops[1];
-                ip += 4;
+                let ops = self.get_operands(&self.mem[self.ip+1..=self.ip+2], mode);
+                let dst = self.mem[self.ip+3] as usize;
+                self.mem[dst] = ops[0] * ops[1];
+                self.ip += 4;
             }
             3 => { /* read stdin */
-                let input = stdin_iter.next().unwrap();
-                let dst = mem[ip+1] as usize;
-                mem[dst] = input.parse::<i32>().unwrap();
-                ip += 2;
+                let dst = self.mem[self.ip+1] as usize;
+                self.mem[dst] = self.input.pop_front().expect("not enough input available");
+                self.ip += 2;
             }
             4 => { /* write stdout */
-                let ops = get_operands(&mem, &[mem[ip+1]], mode);
-                stdout.push(ops[0]);
-                ip += 2;
+                let ops = self.get_operands(&[self.mem[self.ip+1]], mode);
+                self.output.push_back(ops[0]);
+                self.ip += 2;
+                if self.suspend_on_output {
+                    return ProgramState::SUSPENDED;
+                }
             }
             5 => { /* jump-if-true */
-                let ops = get_operands(&mem, &mem[ip+1..=ip+2], mode);
+                let ops = self.get_operands(&self.mem[self.ip+1..=self.ip+2], mode);
                 if ops[0] != 0 {
-                    ip = ops[1] as usize;
+                    self.ip = ops[1] as usize;
                 } else {
-                    ip += 3;
+                    self.ip += 3;
                 }
             }
             6 => { /* jump-if-false */
-                let ops = get_operands(&mem, &mem[ip+1..=ip+2], mode);
+                let ops = self.get_operands(&self.mem[self.ip+1..=self.ip+2], mode);
                 if ops[0] == 0 {
-                    ip = ops[1] as usize;
+                    self.ip = ops[1] as usize;
                 } else {
-                    ip += 3;
+                    self.ip += 3;
                 }
             }
             7 => { /* less-than */
-                let ops = get_operands(&mem, &mem[ip+1..=ip+2], mode);
-                let dst = mem[ip+3] as usize;
+                let ops = self.get_operands(&self.mem[self.ip+1..=self.ip+2], mode);
+                let dst = self.mem[self.ip+3] as usize;
                 if ops[0] < ops[1] {
-                    mem[dst] = 1;
+                    self.mem[dst] = 1;
                 } else {
-                    mem[dst] = 0;
+                    self.mem[dst] = 0;
                 }
-                ip += 4;
+                self.ip += 4;
             }
             8 => { /* equals */
-                let ops = get_operands(&mem, &mem[ip+1..=ip+2], mode);
-                let dst = mem[ip+3] as usize;
+                let ops = self.get_operands(&self.mem[self.ip+1..=self.ip+2], mode);
+                let dst = self.mem[self.ip+3] as usize;
                 if ops[0] == ops[1] {
-                    mem[dst] = 1;
+                    self.mem[dst] = 1;
                 } else {
-                    mem[dst] = 0;
+                    self.mem[dst] = 0;
                 }
-                ip += 4;
+                self.ip += 4;
             }
-            99 => break,
+            99 => return ProgramState::HALTED,
             _ => panic!("invalid opcode")
         }
+        ProgramState::RUNNING
     }
-    mem
 }
 
-fn run_program(input : &[i32]) -> Vec<i32> {
-    run_program_io(input, &[], &mut Vec::new())
-}
 
 fn day2() {
     let input = read_file("input2");
@@ -262,16 +293,18 @@ fn day2() {
     program[1] = 12;
     program[2] = 2;
 
-    let mem = run_program(&program);
-    println!("2a: {}", mem[0]);
+    let mut computer = IntComputer::new(&program);
+    computer.run_program();
+    println!("2a: {}", computer.mem[0]);
 
     for noun in 0..=99 {
         for verb in 0..=99 {
             program[1] = noun;
             program[2] = verb;
-            let mem = run_program(&program);
+            let mut computer = IntComputer::new(&program);
+            computer.run_program();
 
-            if mem[0] == 19_690_720 {
+            if computer.mem[0] == 19_690_720 {
                 println!("2b: {}", 100 * noun + verb);
                 return;
             }
@@ -432,17 +465,19 @@ fn day5() {
     let program : Vec<i32> = input.split(',')
                                   .map(|x| x.parse::<i32>().unwrap())
                                   .collect();
-    let mut stdout = Vec::new();
-    run_program_io(&program, &["1"], &mut stdout);
+    let mut computer = IntComputer::new(&program);
+    computer.input.push_back(1);
+    computer.run_program();
     println!("5a:");
-    for val in stdout {
+    for val in computer.output {
         println!("{}", val);
     }
 
-    let mut stdout = Vec::new();
-    run_program_io(&program, &["5"], &mut stdout);
+    let mut computer = IntComputer::new(&program);
+    computer.input.push_back(5);
+    computer.run_program();
     println!("5b:");
-    for val in stdout {
+    for val in computer.output {
         println!("{}", val);
     }
 }
@@ -457,8 +492,91 @@ fn day6() {
     println!("6b: {}", orbit_map.count_transfers(orbit_map.map["YOU"], orbit_map.map["SAN"]));
 }
 
+fn permutations(elements : Vec<i32>) -> Vec<Vec<i32>> {
+    let mut result = Vec::new();
+    if elements.len() == 1 {
+        result.push(elements);
+        return result;
+    }
+    for current_el in &elements {
+        let mut tmp = elements.clone();
+        let pos = tmp.iter().position(|x| x == current_el).unwrap();
+        tmp.remove(pos);
+        for mut p in permutations(tmp) {
+            p.insert(0, *current_el);
+            result.push(p);
+        }
+    }
+    result
+}
+
+fn max_thruster_signal(program : &[i32]) -> i32 {
+    let phase_settings = permutations(vec![0, 1, 2, 3, 4]);
+    let mut signals = Vec::new();
+
+    for setting in phase_settings {
+        let mut output = 0;
+        for phase in setting {
+            let input = output;
+            let mut computer = IntComputer::new(program);
+            computer.input.push_back(phase);
+            computer.input.push_back(input);
+            computer.run_program();
+            output = computer.output[0];
+        }
+        signals.push(output)
+    }
+    *signals.iter().max().unwrap()
+}
+
+fn max_thruster_signal_feedback(program : &[i32]) -> i32 {
+    let phase_settings = permutations(vec![5, 6, 7, 8, 9]);
+    let mut signals = Vec::new();
+
+    for setting in phase_settings {
+        let mut computers = Vec::new();
+        for phase in setting {
+            let mut computer = IntComputer::new(program);
+            computer.suspend_on_output = true;
+            computer.input.push_back(phase);
+            computers.push(computer);
+        }
+        let mut output = 0;
+        for i in (0..5).cycle() {
+            let input = output;
+            computers[i].input.push_back(input);
+            match computers[i].run_program() {
+                ProgramState::SUSPENDED => {
+                    output = computers[i].output.pop_front().expect("not sufficient output available");
+                }
+                ProgramState::HALTED => {
+                    if i == 4 {
+                        /* last computer halted */
+                        break;
+                    }
+                }
+                _ => panic!("unexpected program state"),
+            };
+        }
+        signals.push(output)
+    }
+    *signals.iter().max().unwrap()
+}
+
+fn day7() {
+    let input = read_file("input7");
+    let input = input.trim_end();
+    let program : Vec<i32> = input.split(',')
+                                  .map(|x| x.parse::<i32>().unwrap())
+                                  .collect();
+
+    println!("7a: {}", max_thruster_signal(&program));
+
+    println!("7b: {}", max_thruster_signal_feedback(&program));
+}
+
 fn main() {
-    day6();
+    day7();
 }
 
 #[cfg(test)]
@@ -479,10 +597,17 @@ mod tests {
 
     #[test]
     fn test_day2() {
-        assert_eq!(run_program(&[1,0,0,0,99]), vec!(2,0,0,0,99));
-        assert_eq!(run_program(&[2,3,0,3,99]), vec!(2,3,0,6,99));
-        assert_eq!(run_program(&[2,4,4,5,99,0]), vec!(2,4,4,5,99,9801));
-        assert_eq!(run_program(&[1,1,1,4,99,5,6,0,99]), vec!(30,1,1,4,2,5,6,0,99));
+        let mut computer = IntComputer::new(&[1,0,0,0,99]);
+        computer.run_program();
+        assert_eq!(computer.mem, vec!(2,0,0,0,99));
+
+        let mut computer = IntComputer::new(&[2,4,4,5,99,0]);
+        computer.run_program();
+        assert_eq!(computer.mem, vec!(2,4,4,5,99,9801));
+
+        let mut computer = IntComputer::new(&[1,1,1,4,99,5,6,0,99]);
+        computer.run_program();
+        assert_eq!(computer.mem, vec!(30,1,1,4,2,5,6,0,99));
     }
 
     #[test]
@@ -518,17 +643,20 @@ mod tests {
     fn test_day5() {
         let program = vec![3,21,1008,21,8,20,1005,20,22,107,8,21,20,1006,20,31,1106,0,36,98,0,0,1002,21,125,20,4,20,1105,1,46,104,999,1105,1,46,1101,1000,1,20,4,20,1105,1,46,98,99];
 
-        let mut stdout = Vec::new();
-        run_program_io(&program, &["4"], &mut stdout);
-        assert_eq!(stdout[0], 999);
+        let mut computer = IntComputer::new(&program);
+        computer.input.push_back(4);
+        computer.run_program();
+        assert_eq!(computer.output[0], 999);
 
-        let mut stdout = Vec::new();
-        run_program_io(&program, &["8"], &mut stdout);
-        assert_eq!(stdout[0], 1000);
+        let mut computer = IntComputer::new(&program);
+        computer.input.push_back(8);
+        computer.run_program();
+        assert_eq!(computer.output[0], 1000);
 
-        let mut stdout = Vec::new();
-        run_program_io(&program, &["42"], &mut stdout);
-        assert_eq!(stdout[0], 1001);
+        let mut computer = IntComputer::new(&program);
+        computer.input.push_back(42);
+        computer.run_program();
+        assert_eq!(computer.output[0], 1001);
     }
 
     #[test]
@@ -540,5 +668,23 @@ mod tests {
         let input = input.to_string() + "\nK)YOU\nI)SAN";
         let orbit_map = OrbitMap::new(&input);
         assert_eq!(orbit_map.count_transfers(orbit_map.map["YOU"], orbit_map.map["SAN"]), 4);
+    }
+
+    #[test]
+    fn test_day7() {
+        let program = vec![3,15,3,16,1002,16,10,16,1,16,15,15,4,15,99,0,0];
+        assert_eq!(max_thruster_signal(&program), 43210);
+
+        let program = vec![3,23,3,24,1002,24,10,24,1002,23,-1,23,101,5,23,23,1,24,23,23,4,23,99,0,0];
+        assert_eq!(max_thruster_signal(&program), 54321);
+
+        let program = vec![3,31,3,32,1002,32,10,32,1001,31,-2,31,1007,31,0,33,1002,33,7,33,1,33,31,31,1,32,31,31,4,31,99,0,0,0];
+        assert_eq!(max_thruster_signal(&program), 65210);
+
+        let program = vec![3,26,1001,26,-4,26,3,27,1002,27,2,27,1,27,26,27,4,27,1001,28,-1,28,1005,28,6,99,0,0,5];
+        assert_eq!(max_thruster_signal_feedback(&program), 139629729);
+
+        let program = vec![3,52,1001,52,-5,52,3,53,1,52,56,54,1007,54,5,55,1005,55,26,1001,54,-5,54,1105,1,12,1,53,54,53,1008,54,0,55,1001,55,1,55,2,53,55,53,4,53,1001,56,-1,56,1005,56,6,99,0,0,0,0,10];
+        assert_eq!(max_thruster_signal_feedback(&program), 18216);
     }
 }
