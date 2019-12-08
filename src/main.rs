@@ -575,8 +575,54 @@ fn day7() {
     println!("7b: {}", max_thruster_signal_feedback(&program));
 }
 
+fn day8() {
+    let input = read_file("input8");
+    let input = input.trim_end();
+    let pixels : Vec<u32> = input.chars()
+                                 .map(|x| x.to_digit(10).unwrap())
+                                 .collect();
+
+    const WIDTH : usize = 25;
+    const HEIGHT : usize = 6;
+
+    let mut lowest = (i32::max_value(), 0);
+    let mut image = [2; WIDTH * HEIGHT];
+    for layer in pixels.chunks(WIDTH * HEIGHT) {
+        let mut digits = HashMap::new();
+        for i in 0..layer.len() {
+            let pixel = layer[i];
+            let count = digits.entry(pixel).or_insert(0);
+            *count += 1;
+            if image[i] == 2 {
+                image[i] = pixel;
+            }
+        }
+        let count0 = *digits.entry(0).or_insert(0);
+        let count1 = *digits.entry(1).or_insert(0);
+        let count2 = *digits.entry(2).or_insert(0);
+        if count0 < lowest.0 {
+            lowest.0 = count0;
+            lowest.1 = count1 * count2;
+        }
+    }
+
+    println!("8a: {}", lowest.1);
+
+    println!("8b:");
+    for row in image.chunks(WIDTH) {
+        for pixel in row {
+            match pixel {
+                0 => print!("#"),
+                1 => print!(" "),
+                _ => panic!("invalid pixel"),
+            };
+        }
+        println!();
+    }
+}
+
 fn main() {
-    day7();
+    day8();
 }
 
 #[cfg(test)]
