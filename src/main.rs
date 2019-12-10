@@ -1,10 +1,12 @@
 #![allow(dead_code)]
 
 use std::fs;
+use std::cmp;
+use std::cmp::Ordering;
 use std::collections::VecDeque;
 use std::collections::HashMap;
 
-#[derive(Eq, PartialEq, Clone, Copy)]
+#[derive(Eq, PartialEq, Clone, Copy, Debug)]
 struct Point {
     x : i32,
     y : i32,
@@ -69,6 +71,13 @@ impl OrbitMap<'_> {
 impl Point {
     fn distance_origin(self) -> i32 {
         self.x.abs() + self.y.abs()
+    }
+
+    fn distance(self, to: Point) -> Point {
+        Point {
+            x: to.x - self.x,
+            y: to.y - self.y,
+        }
     }
 }
 
@@ -669,8 +678,130 @@ fn day9() {
     println!("9b: {}", computer.output[0]);
 }
 
+struct AsteroidMap {
+    asteroids: Vec<Point>,
+}
+
+impl AsteroidMap {
+    fn new(input: &str) -> AsteroidMap {
+        let mut asteroids = Vec::new();
+        let rows: Vec<&str> = input.split('\n').collect();
+
+        for (y, row) in rows.iter().enumerate() {
+            for x in 0..row.len() {
+                if row.as_bytes()[x] as char == '#' {
+                    let pos = Point { x: x as i32, y: y as i32 };
+                    asteroids.push(pos);
+                }
+            }
+        }
+        AsteroidMap { asteroids }
+    }
+
+    fn can_see(&self, from: Point, to: Point) -> bool {
+        if from == to {
+            /* ignore yourself */
+            return false
+        }
+        let dx = to.x - from.x;
+        let dy = to.y - from.y;
+        for div in 2..=cmp::min(dx.abs(), dy.abs()) {
+            if (dx % div).abs() > 0 || (dy % div).abs() > 0 {
+                /* only check divisible positions without remainder */
+                continue;
+            }
+            let stepx = dx / div;
+            let stepy = dy / div;
+            let mut pos = Point {
+                x: from.x + stepx,
+                y: from.y + stepy,
+            };
+            while pos != to {
+                if self.asteroids.contains(&pos) {
+                    /* another asteroid found in line of sight */
+                    return false;
+                }
+                pos.x += stepx;
+                pos.y += stepy;
+            }
+        }
+        if dx == 0 || dy == 0 {
+            let line = Line { p1: from, p2: to };
+            !self.asteroids.iter()
+                           .filter(|&asteroid| *asteroid != from && *asteroid != to)
+                           .any(|&asteroid| line.contains_point(asteroid))
+        } else {
+            true
+        }
+    }
+
+    fn seen_asteroids(&self, pos: Point) -> Vec<Point> {
+        self.asteroids.iter()
+                      .filter(|&asteroid| self.can_see(pos, *asteroid))
+                      .copied()
+                      .collect()
+    }
+
+    fn max_detected_asteroids(&self) -> (Point, usize) {
+        self.asteroids.iter()
+                      .map(|&asteroid| (asteroid, self.seen_asteroids(asteroid).len()))
+                      .max_by_key(|x| x.1).unwrap()
+    }
+
+    fn asteroid_angle(from: Point, to: Point) -> f32 {
+        // point relative to 'from' as center
+        // convert to "normal" coordinates with y axis from bottom->up
+        let p = Point { x: to.x - from.x, y: -(to.y - from.y) };
+
+        // calculate angle between (0, 1) and vector to new point
+        let angle = f32::acos((p.y as f32) / f32::sqrt((p.x*p.x + p.y*p.y) as f32)).to_degrees();
+        if from.x > to.x {
+            360.0 - angle
+        } else {
+            angle
+        }
+    }
+
+    fn asteroid_angle_cmp(from: Point, p1: Point, p2: Point) -> Ordering {
+        if p1 == p2 {
+            return Ordering::Equal;
+        }
+        let a1 = AsteroidMap::asteroid_angle(from, p1);
+        let a2 = AsteroidMap::asteroid_angle(from, p2);
+        a1.partial_cmp(&a2).unwrap()
+    }
+
+    fn vaporized(&mut self, from: Point, count: usize) -> Point {
+        let mut removed = 0;
+        loop {
+            let mut seen = self.seen_asteroids(from);
+            seen.sort_by(|&a1, &a2| AsteroidMap::asteroid_angle_cmp(from, a1, a2));
+            for asteroid in &seen {
+                let map_pos = self.asteroids.iter().position(|x| x == asteroid).unwrap();
+                self.asteroids.remove(map_pos);
+                removed += 1;
+                if removed == count {
+                    return *asteroid;
+                }
+            }
+        }
+    }
+}
+
+fn day10() {
+    let input = read_file("input10");
+    let input = input.trim_end();
+    let mut asteroid_map = AsteroidMap::new(input);
+
+    let max = asteroid_map.max_detected_asteroids();
+    println!("10a: {}", max.1);
+
+    let vaporized = asteroid_map.vaporized(max.0, 200);
+    println!("10b: {}", vaporized.x * 100 + vaporized.y);
+}
+
 fn main() {
-    day9();
+    day10();
 }
 
 #[cfg(test)]
@@ -798,5 +929,81 @@ mod tests {
         let mut computer = IntComputer::new(&program);
         computer.run_program();
         assert_eq!(computer.output[0], 1125899906842624);
+    }
+
+    #[test]
+    fn test_day10() {
+        let map = ".#..#\n\
+                   .....\n\
+                   #####\n\
+                   ....#\n\
+                   ...##";
+        let asteroid_map = AsteroidMap::new(map);
+        assert_eq!(asteroid_map.max_detected_asteroids().1, 8);
+
+        let map = "......#.#.\n\
+                   #..#.#....\n\
+                   ..#######.\n\
+                   .#.#.###..\n\
+                   .#..#.....\n\
+                   ..#....#.#\n\
+                   #..#....#.\n\
+                   .##.#..###\n\
+                   ##...#..#.\n\
+                   .#....####";
+        let asteroid_map = AsteroidMap::new(map);
+        assert_eq!(asteroid_map.max_detected_asteroids().1, 33);
+
+        let map = "#.#...#.#.\n\
+                   .###....#.\n\
+                   .#....#...\n\
+                   ##.#.#.#.#\n\
+                   ....#.#.#.\n\
+                   .##..###.#\n\
+                   ..#...##..\n\
+                   ..##....##\n\
+                   ......#...\n\
+                   .####.###.";
+        let asteroid_map = AsteroidMap::new(map);
+        assert_eq!(asteroid_map.max_detected_asteroids().1, 35);
+
+        let map = ".#..#..###\n\
+                   ####.###.#\n\
+                   ....###.#.\n\
+                   ..###.##.#\n\
+                   ##.##.#.#.\n\
+                   ....###..#\n\
+                   ..#.#..#.#\n\
+                   #..#.#.###\n\
+                   .##...##.#\n\
+                   .....#.#..";
+        let asteroid_map = AsteroidMap::new(map);
+        assert_eq!(asteroid_map.max_detected_asteroids().1, 41);
+
+        let map = ".#..##.###...#######\n\
+                   ##.############..##.\n\
+                   .#.######.########.#\n\
+                   .###.#######.####.#.\n\
+                   #####.##.#.##.###.##\n\
+                   ..#####..#.#########\n\
+                   ####################\n\
+                   #.####....###.#.#.##\n\
+                   ##.#################\n\
+                   #####.##.###..####..\n\
+                   ..######..##.#######\n\
+                   ####.##.####...##..#\n\
+                   .#####..#.######.###\n\
+                   ##...#.##########...\n\
+                   #.##########.#######\n\
+                   .####.#.###.###.#.##\n\
+                   ....##.##.###..#####\n\
+                   .#.#.###########.###\n\
+                   #.#.#.#####.####.###\n\
+                   ###.##.####.##.#..##";
+        let mut asteroid_map = AsteroidMap::new(map);
+        let max = asteroid_map.max_detected_asteroids();
+        assert_eq!(max.1, 210);
+
+        assert_eq!(asteroid_map.vaporized(max.0, 200), Point { x: 8, y: 2 });
     }
 }
