@@ -6,10 +6,17 @@ use std::cmp::Ordering;
 use std::collections::VecDeque;
 use std::collections::HashMap;
 
-#[derive(Eq, PartialEq, Clone, Copy, Debug)]
+#[derive(Eq, PartialEq, Clone, Copy, Debug, Hash)]
 struct Point {
     x : i32,
     y : i32,
+}
+
+enum Direction {
+    UP = 0,
+    RIGHT = 1,
+    DOWN = 2,
+    LEFT = 3,
 }
 
 struct Line {
@@ -78,6 +85,15 @@ impl Point {
             x: to.x - self.x,
             y: to.y - self.y,
         }
+    }
+
+    fn move_in_direction(&mut self, direction: &Direction) {
+        match direction {
+            Direction::UP => self.y += 1,
+            Direction::RIGHT => self.x += 1,
+            Direction::DOWN => self.y -= 1,
+            Direction::LEFT => self.x -= 1,
+        };
     }
 }
 
@@ -172,6 +188,7 @@ enum ProgramState {
     RUNNING,
     HALTED,
     SUSPENDED,
+    NEEDINPUT,
 }
 
 struct IntComputer {
@@ -260,6 +277,9 @@ impl IntComputer {
                 self.ip += 4;
             }
             3 => { /* read stdin */
+                if self.input.is_empty() {
+                    return ProgramState::NEEDINPUT;
+                }
                 let dst = self.mem[self.ip+1] as isize;
                 let input = self.input.pop_front().expect("not enough input available");
                 self.write_mem(dst, input, mode);
@@ -800,8 +820,121 @@ fn day10() {
     println!("10b: {}", vaporized.x * 100 + vaporized.y);
 }
 
+struct RobotDirection {
+    direction: Direction,
+}
+
+impl RobotDirection {
+    fn rotate(&mut self, direction: isize) {
+        self.direction = match direction {
+            0 => {
+                match &self.direction {
+                    Direction::UP => Direction::LEFT,
+                    Direction::LEFT => Direction::DOWN,
+                    Direction::DOWN => Direction::RIGHT,
+                    Direction::RIGHT => Direction::UP,
+                }
+            }
+            1 => {
+                match &self.direction {
+                    Direction::UP => Direction::RIGHT,
+                    Direction::RIGHT => Direction::DOWN,
+                    Direction::DOWN => Direction::LEFT,
+                    Direction::LEFT => Direction::UP,
+                }
+            }
+            _ => panic!("invalid direction")
+        }
+    }
+}
+
+fn hull_paint(program: &[isize], starting_color: isize) -> HashMap<Point, isize> {
+    let mut computer = IntComputer::new(program);
+    computer.suspend_on_output = true;
+
+    let mut hull = HashMap::new();
+    let mut pos = Point { x: 0, y: 0 };
+    let mut direction = RobotDirection { direction: Direction::UP };
+    let mut new_color = None;
+    let mut rotation = None;
+    hull.insert(pos, starting_color);
+    loop {
+        match computer.run_program() {
+            ProgramState::SUSPENDED => {
+                let output = computer.output.pop_front().unwrap();
+                if new_color.is_none() {
+                    new_color = Some(output);
+                } else if rotation.is_none() {
+                    rotation = Some(output);
+                } else {
+                    panic!("unexpected state");
+                }
+            }
+            ProgramState::NEEDINPUT => {
+                computer.input.push_back(*hull.entry(pos).or_insert(0));
+                continue;
+            }
+            ProgramState::HALTED => break,
+            _ => {}
+        }
+        if new_color.is_some() && rotation.is_some() {
+            hull.insert(pos, new_color.unwrap());
+            direction.rotate(rotation.unwrap());
+            pos.move_in_direction(&direction.direction);
+            new_color = None;
+            rotation = None;
+        }
+    }
+    hull
+}
+
+fn day11() {
+    let input = read_file("input11");
+    let input = input.trim_end();
+    let program : Vec<isize> = input.split(',')
+                                    .map(|x| x.parse::<isize>().unwrap())
+                                    .collect();
+
+    let hull = hull_paint(&program, 0);
+    println!("11a: {}", hull.len());
+
+    let hull = hull_paint(&program, 1);
+    let mut min_x = i32::max_value();
+    let mut min_y = i32::max_value();
+    let mut max_x = i32::min_value();
+    let mut max_y = i32::min_value();
+    for (pos, _) in &hull {
+        min_x = cmp::min(min_x, pos.x);
+        min_y = cmp::min(min_y, pos.y);
+        max_x = cmp::max(max_x, pos.x);
+        max_y = cmp::max(max_y, pos.y);
+    }
+    let mut hull_vec = Vec::new();
+    for _ in 0..=(max_y - min_y) {
+        let mut row = Vec::new();
+        row.resize((max_x - min_x + 1) as usize, 0);
+        hull_vec.push(row);
+    }
+    for (pos, color) in &hull {
+        hull_vec[(pos.y - min_y) as usize][(pos.x - min_x) as usize] = *color;
+    }
+    hull_vec.reverse();
+
+    println!("11b:");
+    for row in hull_vec {
+        for color in row {
+            match color {
+                0 => print!("."),
+                1 => print!("#"),
+                _ => panic!("invalid color")
+            }
+        }
+        println!();
+    }
+}
+
 fn main() {
-    day10();
+    day11();
 }
 
 #[cfg(test)]
