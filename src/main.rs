@@ -933,8 +933,132 @@ fn day11() {
     }
 }
 
+#[derive(PartialEq, Eq, Clone, Copy)]
+struct Position {
+    x: isize,
+    y: isize,
+    z: isize,
+}
+
+#[derive(PartialEq, Eq, Clone, Copy)]
+struct Moon {
+    pos: Position,
+    velocity: Position,
+}
+
+impl Moon {
+    fn new(x: isize, y: isize, z: isize) -> Moon {
+        Moon {
+            pos: Position { x, y, z },
+            velocity: Position { x: 0, y: 0, z: 0 },
+        }
+    }
+
+    fn apply_gravity(&mut self, other: &Moon) {
+        self.velocity.x += (other.pos.x - self.pos.x).signum();
+        self.velocity.y += (other.pos.y - self.pos.y).signum();
+        self.velocity.z += (other.pos.z - self.pos.z).signum();
+    }
+
+    fn update_position(&mut self) {
+        self.pos.x += self.velocity.x;
+        self.pos.y += self.velocity.y;
+        self.pos.z += self.velocity.z;
+    }
+
+    fn potential_energy(&self) -> isize {
+        self.pos.x.abs() + self.pos.y.abs() + self.pos.z.abs()
+    }
+
+    fn kinetic_energy(&self) -> isize {
+        self.velocity.x.abs() + self.velocity.y.abs() + self.velocity.z.abs()
+    }
+
+    fn total_energy(&self) -> isize {
+        self.potential_energy() * self.kinetic_energy()
+    }
+}
+
+fn simulate_moons(moons: &mut Vec<Moon>) {
+    for i in 0..moons.len() {
+        for j in 0..moons.len() {
+            let other = moons[j].clone();
+            moons[i].apply_gravity(&other);
+        }
+    }
+    for moon in moons {
+        moon.update_position();
+    }
+}
+
+fn gcd(a: isize, b: isize) -> isize {
+    if b == 0 {
+        a
+    } else {
+        gcd(b, a % b)
+    }
+}
+
+fn lcm(a: isize, b: isize) -> isize {
+    (a*b).abs() / gcd(a, b)
+}
+
+fn day12() {
+    let initial_state = vec![
+        Moon::new(17, -9,   4),
+        Moon::new( 2,  2, -13),
+        Moon::new(-1,  5,  -1),
+        Moon::new( 4,  7,  -7),
+    ];
+    let mut moons = initial_state.clone();
+
+    for _ in 0..1000 {
+        simulate_moons(&mut moons);
+    }
+
+    let total_energy: isize = moons.iter()
+                                   .map(|moon| moon.total_energy())
+                                   .sum();
+    println!("12a: {}", total_energy);
+
+    let mut period_x = 0;
+    let initial_x_values: Vec<(isize, isize)> = moons.iter().map(|moon| (moon.pos.x, moon.velocity.x)).collect();
+    loop {
+        period_x += 1;
+        simulate_moons(&mut moons);
+        let x_values: Vec<(isize, isize)> = moons.iter().map(|moon| (moon.pos.x, moon.velocity.x)).collect();
+        if x_values == initial_x_values {
+            break;
+        }
+    }
+
+    let mut period_y = 0;
+    let initial_y_values: Vec<(isize, isize)> = moons.iter().map(|moon| (moon.pos.y, moon.velocity.y)).collect();
+    loop {
+        period_y += 1;
+        simulate_moons(&mut moons);
+        let y_values: Vec<(isize, isize)> = moons.iter().map(|moon| (moon.pos.y, moon.velocity.y)).collect();
+        if y_values == initial_y_values {
+            break;
+        }
+    }
+
+    let mut period_z = 0;
+    let initial_z_values: Vec<(isize, isize)> = moons.iter().map(|moon| (moon.pos.z, moon.velocity.z)).collect();
+    loop {
+        period_z += 1;
+        simulate_moons(&mut moons);
+        let z_values: Vec<(isize, isize)> = moons.iter().map(|moon| (moon.pos.z, moon.velocity.z)).collect();
+        if z_values == initial_z_values {
+            break;
+        }
+    }
+
+    println!("12b: {}", lcm(lcm(period_x, period_y), period_z));
+}
+
 fn main() {
-    day11();
+    day12();
 }
 
 #[cfg(test)]
