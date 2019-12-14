@@ -1057,8 +1057,136 @@ fn day12() {
     println!("12b: {}", lcm(lcm(period_x, period_y), period_z));
 }
 
+struct Arcade {
+    computer: IntComputer,
+    screen: HashMap<(isize, isize), isize>,
+    score: isize,
+}
+
+impl Arcade {
+    fn new(program: &[isize]) -> Arcade {
+        Arcade {
+            computer: IntComputer::new(&program),
+            screen: HashMap::new(),
+            score: 0,
+        }
+    }
+
+    fn find_tile(&self, search: isize) -> (isize, isize) {
+        for (pos, tile) in &self.screen {
+            if *tile == search {
+                return *pos;
+            }
+        }
+        panic!("tile not found on screen");
+    }
+
+    fn find_ball(&self) -> (isize, isize) {
+        self.find_tile(4)
+    }
+
+    fn find_paddle(&self) -> (isize, isize) {
+        self.find_tile(3)
+    }
+
+    fn run_arcade(&mut self) {
+        let mut x = None;
+        let mut y = None;
+        let mut tile = None;
+        loop {
+            match self.computer.run_program() {
+                ProgramState::SUSPENDED => {
+                    let out = self.computer.output.pop_front().unwrap();
+                    if x.is_none() {
+                        x = Some(out);
+                    } else if y.is_none() {
+                        y = Some(out);
+                    } else if tile.is_none() {
+                        tile = Some(out);
+                    } else {
+                        panic!("invalid state");
+                    }
+                }
+                ProgramState::NEEDINPUT => {
+                    let pos_ball = self.find_ball();
+                    let pos_paddle = self.find_paddle();
+                    let input = (pos_ball.0 - pos_paddle.0).signum();
+                    self.computer.input.push_back(input);
+                }
+                ProgramState::HALTED => break,
+                _ => {}
+            };
+            if let (Some(posx), Some(posy), Some(new_tile)) = (x, y, tile) {
+                if posx == -1 && posy == 0 {
+                    self.score = new_tile;
+                } else {
+                    self.screen.insert((posx,posy), new_tile);
+                }
+                x = None;
+                y = None;
+                tile = None;
+            }
+        }
+    }
+
+    fn dump_screen(&self) {
+        let mut min_x = isize::max_value();
+        let mut min_y = isize::max_value();
+        let mut max_x = isize::min_value();
+        let mut max_y = isize::min_value();
+        for (x, y) in self.screen.keys() {
+            min_x = cmp::min(min_x, *x);
+            min_y = cmp::min(min_y, *y);
+            max_x = cmp::max(max_x, *x);
+            max_y = cmp::max(max_y, *y);
+        }
+        let mut screen_vec = Vec::new();
+        for _ in 0..=(max_y - min_y) {
+            let mut row = Vec::new();
+            row.resize((max_x - min_x + 1) as usize, 0);
+            screen_vec.push(row);
+        }
+        for (x, y) in self.screen.keys() {
+            let mut tile = self.screen.get(&(*x,*y));
+            if tile.is_none() {
+                tile = Some(&0);
+            }
+            screen_vec[(y - min_y) as usize][(x - min_x) as usize] = *tile.unwrap();
+        }
+        for row in screen_vec {
+            for tile in row {
+                print!("{}", tile);
+            }
+            println!();
+        }
+    }
+}
+
+fn day13() {
+    let input = read_file("input13");
+    let input = input.trim_end();
+    let program : Vec<isize> = input.split(',')
+                                    .map(|x| x.parse::<isize>().unwrap())
+                                    .collect();
+
+    let mut arcade = Arcade::new(&program);
+    arcade.computer.suspend_on_output = true;
+    arcade.run_arcade();
+    let blocks = arcade.screen.values()
+                              .filter(|&tile| *tile == 2)
+                              .count();
+
+    println!("13a: {}", blocks);
+
+    let mut arcade = Arcade::new(&program);
+    arcade.computer.suspend_on_output = true;
+    arcade.computer.mem[0] = 2;
+    arcade.run_arcade();
+    println!("13b: {}", arcade.score);
+}
+
 fn main() {
-    day12();
+    day13();
 }
 
 #[cfg(test)]
