@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
-use std::fs;
+use std::fs::{self, File};
+use std::io::prelude::*;
 use std::cmp;
 use std::cmp::Ordering;
 use std::collections::VecDeque;
@@ -903,7 +904,7 @@ fn day11() {
     let mut min_y = i32::max_value();
     let mut max_x = i32::min_value();
     let mut max_y = i32::min_value();
-    for (pos, _) in &hull {
+    for pos in hull.keys() {
         min_x = cmp::min(min_x, pos.x);
         min_y = cmp::min(min_y, pos.y);
         max_x = cmp::max(max_x, pos.x);
@@ -982,7 +983,7 @@ impl Moon {
 fn simulate_moons(moons: &mut Vec<Moon>) {
     for i in 0..moons.len() {
         for j in 0..moons.len() {
-            let other = moons[j].clone();
+            let other = moons[j];
             moons[i].apply_gravity(&other);
         }
     }
@@ -1129,7 +1130,10 @@ impl Arcade {
         }
     }
 
-    fn dump_screen(&self) {
+    fn dump_screen(&self, index: Option<isize>) {
+        if self.screen.is_empty() {
+            return;
+        }
         let mut min_x = isize::max_value();
         let mut min_y = isize::max_value();
         let mut max_x = isize::min_value();
@@ -1153,11 +1157,31 @@ impl Arcade {
             }
             screen_vec[(y - min_y) as usize][(x - min_x) as usize] = *tile.unwrap();
         }
-        for row in screen_vec {
-            for tile in row {
-                print!("{}", tile);
+        if let Some(idx) = index {
+            /* write to file */
+            let mut file = File::create(format!("screen{:05}.ppm", idx)).expect("can't open file for writing");
+            file.write_all(format!("P6\n{} {} 255\n", screen_vec[0].len(), screen_vec.len()).as_bytes()).unwrap();
+            for row in screen_vec {
+                for tile in row {
+                    let value: (u8, u8, u8) = match tile {
+                        0 => (255, 255, 255), /* empty */
+                        1 => ( 32,  32,  32), /* wall */
+                        2 => (127, 127, 127), /* block */
+                        3 => (255,   0,   0), /* paddle */
+                        4 => (  0,   0, 255), /* ball */
+                        _ => panic!("invalid tile")
+                    };
+                    file.write_all(&[value.0, value.1, value.2]).unwrap();
+                }
             }
-            println!();
+        } else {
+            /* dump to stdout */
+            for row in screen_vec {
+                for tile in row {
+                    print!("{}", tile);
+                }
+                println!();
+            }
         }
     }
 }
