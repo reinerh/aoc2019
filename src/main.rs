@@ -1356,8 +1356,252 @@ fn day14() {
     println!("14b: {}", reactions.possible_fuel());
 }
 
+#[derive(Copy, Clone, PartialEq)]
+#[repr(isize)]
+enum DroidDirection {
+    NORTH = 1,
+    SOUTH = 2,
+    WEST = 3,
+    EAST = 4,
+}
+
+impl DroidDirection {
+    fn from(val: isize) -> Option<DroidDirection> {
+        match val {
+            1 => Some(DroidDirection::NORTH),
+            2 => Some(DroidDirection::SOUTH),
+            3 => Some(DroidDirection::WEST),
+            4 => Some(DroidDirection::EAST),
+            _ => None,
+        }
+    }
+
+    fn opposite(&self) -> DroidDirection {
+        match self {
+            DroidDirection::NORTH => DroidDirection::SOUTH,
+            DroidDirection::SOUTH => DroidDirection::NORTH,
+            DroidDirection::WEST => DroidDirection::EAST,
+            DroidDirection::EAST => DroidDirection::WEST,
+        }
+    }
+
+    fn next(&self) -> Option<DroidDirection> {
+        match self {
+            DroidDirection::NORTH => Some(DroidDirection::SOUTH),
+            DroidDirection::SOUTH => Some(DroidDirection::WEST),
+            DroidDirection::WEST => Some(DroidDirection::EAST),
+            DroidDirection::EAST => None,
+        }
+    }
+}
+
+struct RepairDroid {
+    computer: IntComputer,
+    steps: u32,
+    pos: Point,
+    map: HashMap<Point, isize>,
+    direction: DroidDirection,
+    path: Vec<(Point, DroidDirection)>,
+}
+
+impl RepairDroid {
+    fn new(program: &[isize]) -> RepairDroid {
+        let mut tiles_map_ascii = HashMap::new();
+        tiles_map_ascii.insert(0, ' ');
+        tiles_map_ascii.insert(1, '.');
+        tiles_map_ascii.insert(2, '#');
+        tiles_map_ascii.insert(3, 'O');
+        tiles_map_ascii.insert(4, 'D');
+        tiles_map_ascii.insert(5, '+');
+
+        let mut tiles_map_color = HashMap::new();
+        tiles_map_color.insert(0, (255, 255, 255));
+        tiles_map_color.insert(1, (200, 200, 200));
+        tiles_map_color.insert(2, (  0,   0,   0));
+        tiles_map_color.insert(3, (  0,   0, 255));
+        tiles_map_color.insert(4, (  0, 255,   0));
+        tiles_map_color.insert(5, (150, 150, 150));
+
+        let mut computer = IntComputer::new(&program);
+        computer.screen.tiles_map_ascii = tiles_map_ascii;
+        computer.screen.tiles_map_color = tiles_map_color;
+
+        RepairDroid {
+            computer,
+            steps: 0,
+            pos: Point { x: 0, y: 0 },
+            map: HashMap::new(),
+            direction: DroidDirection::NORTH,
+            path: Vec::new(),
+        }
+    }
+
+    fn move_direction(&mut self) {
+        let mut new_pos = self.pos;
+        match self.direction {
+            DroidDirection::NORTH => new_pos.y += 1,
+            DroidDirection::SOUTH => new_pos.y -= 1,
+            DroidDirection::WEST  => new_pos.x -= 1,
+            DroidDirection::EAST  => new_pos.x += 1,
+        }
+        self.map.insert(new_pos, 1);
+
+        /* start next movement to north, except we are coming from there */
+        let old_direction = self.direction;
+        self.direction = if self.direction == DroidDirection::SOUTH {
+            DroidDirection::SOUTH
+        } else {
+            DroidDirection::NORTH
+        };
+
+        let mut drop_last = false;
+        if let Some((pos, _)) = self.path.last() {
+            /* if the new pos is the same as the previous
+               on our path, we are tracking back */
+            if self.pos != *pos && new_pos == *pos {
+                self.direction = old_direction.opposite();
+                drop_last = true;
+                self.direction = self.next_direction();
+            }
+        }
+        if drop_last {
+            self.pos = new_pos;
+            return;
+        }
+
+        /* save the successful movement */
+        self.pos = new_pos;
+        self.path.push((self.pos, old_direction));
+    }
+
+    fn mark_wall(&mut self) {
+        let mut wall = self.pos;
+        match self.direction {
+            DroidDirection::NORTH => wall.y += 1,
+            DroidDirection::SOUTH => wall.y -= 1,
+            DroidDirection::WEST  => wall.x -= 1,
+            DroidDirection::EAST  => wall.x += 1,
+        }
+        self.map.insert(wall, 2);
+    }
+
+    fn draw_map(&mut self) {
+        for (pos, val) in &self.map {
+            self.computer.screen.set_pixel(pos.x as isize, pos.y as isize, *val);
+        }
+        self.computer.screen.set_pixel(0, 0, 5);
+        self.computer.screen.set_pixel(self.pos.x as isize, self.pos.y as isize, 4);
+        self.computer.screen.dump_screen(None);
+    }
+
+    fn next_direction(&mut self) -> DroidDirection {
+        let previous_direction = match self.path.last() {
+            None => DroidDirection::NORTH,
+            Some(d) => d.1,
+        };
+
+        let mut new_direction = self.direction.next();
+        if let Some(dir) = new_direction {
+            if dir == previous_direction.opposite() {
+                new_direction = dir.next();
+            }
+        }
+
+        if let Some(d) = new_direction {
+            d
+        } else {
+            /* go back */
+            self.path.pop();
+            previous_direction.opposite()
+        }
+    }
+
+    fn set_to_oxygen(&mut self, x: i32, y: i32) {
+        if let Some(1) = self.map.get(&Point {x, y}) {
+            self.map.insert(Point {x, y}, 3);
+        }
+    }
+
+    fn fill_with_oxygen(&mut self) -> u32 {
+        self.solve_labyrinth(true);
+
+        let mut count = 0;
+        while self.map.values().filter(|&x| *x == 1).count() > 0 {
+            let oxygens: Vec<Point> = self.map.iter()
+                                              .filter(|(_, &val)| val == 3)
+                                              .map(|(&pos, _)| pos)
+                                              .collect();
+
+            for pos in oxygens {
+                self.set_to_oxygen(pos.x + 1, pos.y);
+                self.set_to_oxygen(pos.x - 1, pos.y);
+                self.set_to_oxygen(pos.x, pos.y + 1);
+                self.set_to_oxygen(pos.x, pos.y - 1);
+            }
+            count += 1;
+        }
+        count
+    }
+
+    fn repair(&mut self) {
+        self.solve_labyrinth(false);
+    }
+
+    fn solve_labyrinth(&mut self, map_completely: bool) {
+        loop {
+            match self.computer.run_program() {
+                ProgramState::NEEDINPUT => {
+                    self.computer.input.push_back(self.direction as isize);
+                }
+                ProgramState::SUSPENDED => {
+                    match self.computer.output.pop_front().unwrap() {
+                        0 => { /* hit a wall */
+                            self.mark_wall();
+                            self.direction = self.next_direction();
+                        }
+                        1 => { /* moving in this direction was successful */
+                            self.move_direction();
+                            if self.path.is_empty() {
+                                break;
+                            }
+                        }
+                        2 => { /* found the destination */
+                            self.move_direction();
+                            self.map.insert(self.pos, 3);
+                            if !map_completely {
+                                break;
+                            }
+                        }
+                        _ => panic!("invalid droid state")
+                    }
+                }
+                ProgramState::HALTED => break,
+                _ => {}
+            }
+        }
+    }
+}
+
+fn day15() {
+    let input = read_file("input15");
+    let input = input.trim_end();
+    let program : Vec<isize> = input.split(',')
+                                    .map(|x| x.parse::<isize>().unwrap())
+                                    .collect();
+
+    let mut droid = RepairDroid::new(&program);
+    droid.computer.suspend_on_output = true;
+    droid.repair();
+    println!("15a: {}", droid.path.len());
+
+    let mut droid = RepairDroid::new(&program);
+    droid.computer.suspend_on_output = true;
+    let time = droid.fill_with_oxygen();
+    println!("15b: {}", time);
+}
+
 fn main() {
-    day14();
+    day15();
 }
 
 #[cfg(test)]
