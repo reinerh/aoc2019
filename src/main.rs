@@ -192,6 +192,77 @@ enum ProgramState {
     NEEDINPUT,
 }
 
+struct Screen {
+    screen: HashMap<(isize, isize), isize>,
+    tiles_map_ascii: HashMap<isize, char>,
+    tiles_map_color: HashMap<isize, (u8, u8, u8)>,
+}
+
+impl Screen {
+    fn new() -> Screen {
+        Screen {
+            screen: HashMap::new(),
+            tiles_map_ascii: HashMap::new(),
+            tiles_map_color: HashMap::new(),
+        }
+    }
+
+    fn set_pixel(&mut self, posx: isize, posy: isize, val: isize) {
+        self.screen.insert((posx, posy), val);
+    }
+
+    fn dump_screen(&self, index: Option<isize>) {
+        if self.screen.is_empty() {
+            return;
+        }
+        let mut min_x = isize::max_value();
+        let mut min_y = isize::max_value();
+        let mut max_x = isize::min_value();
+        let mut max_y = isize::min_value();
+        for (x, y) in self.screen.keys() {
+            min_x = cmp::min(min_x, *x);
+            min_y = cmp::min(min_y, *y);
+            max_x = cmp::max(max_x, *x);
+            max_y = cmp::max(max_y, *y);
+        }
+        let mut screen_vec = Vec::new();
+        for _ in 0..=(max_y - min_y) {
+            let mut row = Vec::new();
+            row.resize((max_x - min_x + 1) as usize, 0);
+            screen_vec.push(row);
+        }
+        for (x, y) in self.screen.keys() {
+            let mut tile = self.screen.get(&(*x,*y));
+            if tile.is_none() {
+                tile = Some(&0);
+            }
+            screen_vec[(y - min_y) as usize][(x - min_x) as usize] = *tile.unwrap();
+        }
+        if let Some(idx) = index {
+            /* write to file */
+            let mut file = File::create(format!("screen{:05}.ppm", idx)).expect("can't open file for writing");
+            file.write_all(format!("P6\n{} {} 255\n", screen_vec[0].len(), screen_vec.len()).as_bytes()).unwrap();
+            for row in screen_vec {
+                for tile in row {
+                    let (r, g, b) = self.tiles_map_color.get(&tile).unwrap();
+                    file.write_all(&[*r, *g, *b]).unwrap();
+                }
+            }
+        } else {
+            /* dump to stdout */
+            for row in screen_vec {
+                for tile in row {
+                    match self.tiles_map_ascii.get(&tile) {
+                        Some(x) => print!("{}", x),
+                        None => print!("{}", tile),
+                    }
+                }
+                println!();
+            }
+        }
+    }
+}
+
 struct IntComputer {
     ip : usize,
     mem : Vec<isize>,
@@ -199,6 +270,7 @@ struct IntComputer {
     input : VecDeque<isize>,
     output : VecDeque<isize>,
     suspend_on_output : bool,
+    screen: Screen,
 }
 
 impl IntComputer {
@@ -210,6 +282,7 @@ impl IntComputer {
             input : VecDeque::new(),
             output : VecDeque::new(),
             suspend_on_output : false,
+            screen: Screen::new(),
         }
     }
 
@@ -1060,21 +1133,29 @@ fn day12() {
 
 struct Arcade {
     computer: IntComputer,
-    screen: HashMap<(isize, isize), isize>,
     score: isize,
 }
 
 impl Arcade {
     fn new(program: &[isize]) -> Arcade {
+        let mut tiles_map = HashMap::new();
+        tiles_map.insert(0, (255, 255, 255));  /* empty */
+        tiles_map.insert(1, ( 32,  32,  32));  /* wall */
+        tiles_map.insert(2, (127, 127, 127));  /* block */
+        tiles_map.insert(3, (255,   0,   0));  /* paddle */
+        tiles_map.insert(4, (  0,   0, 255));  /* ball */
+
+        let mut computer = IntComputer::new(&program);
+        computer.screen.tiles_map_color = tiles_map;
+
         Arcade {
-            computer: IntComputer::new(&program),
-            screen: HashMap::new(),
+            computer,
             score: 0,
         }
     }
 
     fn find_tile(&self, search: isize) -> (isize, isize) {
-        for (pos, tile) in &self.screen {
+        for (pos, tile) in &self.computer.screen.screen {
             if *tile == search {
                 return *pos;
             }
@@ -1121,66 +1202,11 @@ impl Arcade {
                 if posx == -1 && posy == 0 {
                     self.score = new_tile;
                 } else {
-                    self.screen.insert((posx,posy), new_tile);
+                    self.computer.screen.set_pixel(posx, posy, new_tile);
                 }
                 x = None;
                 y = None;
                 tile = None;
-            }
-        }
-    }
-
-    fn dump_screen(&self, index: Option<isize>) {
-        if self.screen.is_empty() {
-            return;
-        }
-        let mut min_x = isize::max_value();
-        let mut min_y = isize::max_value();
-        let mut max_x = isize::min_value();
-        let mut max_y = isize::min_value();
-        for (x, y) in self.screen.keys() {
-            min_x = cmp::min(min_x, *x);
-            min_y = cmp::min(min_y, *y);
-            max_x = cmp::max(max_x, *x);
-            max_y = cmp::max(max_y, *y);
-        }
-        let mut screen_vec = Vec::new();
-        for _ in 0..=(max_y - min_y) {
-            let mut row = Vec::new();
-            row.resize((max_x - min_x + 1) as usize, 0);
-            screen_vec.push(row);
-        }
-        for (x, y) in self.screen.keys() {
-            let mut tile = self.screen.get(&(*x,*y));
-            if tile.is_none() {
-                tile = Some(&0);
-            }
-            screen_vec[(y - min_y) as usize][(x - min_x) as usize] = *tile.unwrap();
-        }
-        if let Some(idx) = index {
-            /* write to file */
-            let mut file = File::create(format!("screen{:05}.ppm", idx)).expect("can't open file for writing");
-            file.write_all(format!("P6\n{} {} 255\n", screen_vec[0].len(), screen_vec.len()).as_bytes()).unwrap();
-            for row in screen_vec {
-                for tile in row {
-                    let value: (u8, u8, u8) = match tile {
-                        0 => (255, 255, 255), /* empty */
-                        1 => ( 32,  32,  32), /* wall */
-                        2 => (127, 127, 127), /* block */
-                        3 => (255,   0,   0), /* paddle */
-                        4 => (  0,   0, 255), /* ball */
-                        _ => panic!("invalid tile")
-                    };
-                    file.write_all(&[value.0, value.1, value.2]).unwrap();
-                }
-            }
-        } else {
-            /* dump to stdout */
-            for row in screen_vec {
-                for tile in row {
-                    print!("{}", tile);
-                }
-                println!();
             }
         }
     }
@@ -1196,9 +1222,9 @@ fn day13() {
     let mut arcade = Arcade::new(&program);
     arcade.computer.suspend_on_output = true;
     arcade.run_arcade();
-    let blocks = arcade.screen.values()
-                              .filter(|&tile| *tile == 2)
-                              .count();
+    let blocks = arcade.computer.screen.screen.values()
+                                              .filter(|&tile| *tile == 2)
+                                              .count();
 
     println!("13a: {}", blocks);
 
