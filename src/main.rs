@@ -1600,8 +1600,52 @@ fn day15() {
     println!("15b: {}", time);
 }
 
+fn fft_pattern(pos: usize) -> Vec<i8> {
+    let base_pattern = vec![0, 1, 0, -1];
+
+    let mut pattern = Vec::new();
+    pattern.reserve(pos * base_pattern.len());
+
+    for d in base_pattern {
+        for _ in 0..pos+1 {
+            pattern.push(d);
+        }
+    }
+    pattern
+}
+
+fn fft(input: &[i8]) -> Vec<i8> {
+    let mut output = Vec::new();
+
+    for i in 0..input.len() {
+        let pattern = fft_pattern(i);
+        let mut sum : i32 = 0;
+        for j in 0..input.len() {
+            sum += input[j] as i32 * pattern[(j+1) % pattern.len()] as i32;
+        }
+        output.push((sum % 10).abs() as i8);
+    }
+
+    output
+}
+
+fn day16() {
+    let input = read_file("input16");
+    let input = input.trim_end();
+    let mut values : Vec<i8> = input.chars().map(|x| x.to_digit(10).unwrap() as i8).collect();
+    for _ in 0..100 {
+        values = fft(&values);
+    }
+
+    print!("16a: ");
+    for d in 0..8 {
+        print!("{}", values[d]);
+    }
+    println!();
+}
+
 fn main() {
-    day15();
+    day16();
 }
 
 #[cfg(test)]
@@ -1878,5 +1922,34 @@ mod tests {
         let reactions = Reactions::parse(input);
         assert_eq!(reactions.count_material(1, "FUEL"), 2210736);
         //assert_eq!(reactions.possible_fuel(), 460664);
+    }
+
+    #[test]
+    fn test_day16() {
+        assert_eq!(fft(&[1,2,3,4,5,6,7,8]), [4,8,2,2,6,1,5,8]);
+        assert_eq!(fft(&[4,8,2,2,6,1,5,8]), [3,4,0,4,0,4,3,8]);
+        assert_eq!(fft(&[3,4,0,4,0,4,3,8]), [0,3,4,1,5,5,1,8]);
+        assert_eq!(fft(&[0,3,4,1,5,5,1,8]), [0,1,0,2,9,4,9,8]);
+
+        let input = "80871224585914546619083218645595";
+        let mut values : Vec<i8> = input.chars().map(|x| x.to_digit(10).unwrap() as i8).collect();
+        for _ in 0..100 {
+            values = fft(&values);
+        }
+        assert_eq!(values[0..8], [2,4,1,7,6,1,7,6]);
+
+        let input = "19617804207202209144916044189917";
+        let mut values : Vec<i8> = input.chars().map(|x| x.to_digit(10).unwrap() as i8).collect();
+        for _ in 0..100 {
+            values = fft(&values);
+        }
+        assert_eq!(values[0..8], [7,3,7,4,5,4,1,8]);
+
+        let input = "69317163492948606335995924319873";
+        let mut values : Vec<i8> = input.chars().map(|x| x.to_digit(10).unwrap() as i8).collect();
+        for _ in 0..100 {
+            values = fft(&values);
+        }
+        assert_eq!(values[0..8], [5,2,4,3,2,1,3,3]);
     }
 }
