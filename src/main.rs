@@ -13,6 +13,7 @@ struct Point {
     y : i32,
 }
 
+#[derive(Copy, Clone, PartialEq)]
 enum Direction {
     UP = 0,
     RIGHT = 1,
@@ -88,7 +89,7 @@ impl Point {
         }
     }
 
-    fn move_in_direction(&mut self, direction: &Direction) {
+    fn move_in_direction(&mut self, direction: Direction) {
         match direction {
             Direction::UP => self.y += 1,
             Direction::RIGHT => self.x += 1,
@@ -954,7 +955,7 @@ fn hull_paint(program: &[isize], starting_color: isize) -> HashMap<Point, isize>
         if new_color.is_some() && rotation.is_some() {
             hull.insert(pos, new_color.unwrap());
             direction.rotate(rotation.unwrap());
-            pos.move_in_direction(&direction.direction);
+            pos.move_in_direction(direction.direction);
             new_color = None;
             rotation = None;
         }
@@ -1336,11 +1337,8 @@ impl Reactions {
 
         fuel_count += Reactions::ORE_LIMIT / ore_per_fuel;
         self.count_material_(Reactions::ORE_LIMIT / ore_per_fuel, "FUEL", &mut leftovers, &mut ore_count).unwrap();
-        loop {
-            match self.count_material_(1, "FUEL", &mut leftovers, &mut ore_count) {
-                Ok(_) => fuel_count += 1,
-                Err(_) => break,
-            };
+        while let Ok(_) = self.count_material_(1, "FUEL", &mut leftovers, &mut ore_count) {
+            fuel_count += 1;
         }
         fuel_count
     }
@@ -1376,7 +1374,7 @@ impl DroidDirection {
         }
     }
 
-    fn opposite(&self) -> DroidDirection {
+    fn opposite(self) -> DroidDirection {
         match self {
             DroidDirection::NORTH => DroidDirection::SOUTH,
             DroidDirection::SOUTH => DroidDirection::NORTH,
@@ -1385,7 +1383,7 @@ impl DroidDirection {
         }
     }
 
-    fn next(&self) -> Option<DroidDirection> {
+    fn next(self) -> Option<DroidDirection> {
         match self {
             DroidDirection::NORTH => Some(DroidDirection::SOUTH),
             DroidDirection::SOUTH => Some(DroidDirection::WEST),
@@ -1607,7 +1605,7 @@ fn fft_pattern(pos: usize) -> Vec<i8> {
     pattern.reserve(pos * base_pattern.len());
 
     for d in base_pattern {
-        for _ in 0..pos+1 {
+        for _ in 0..=pos {
             pattern.push(d);
         }
     }
@@ -1638,14 +1636,170 @@ fn day16() {
     }
 
     print!("16a: ");
-    for d in 0..8 {
-        print!("{}", values[d]);
+    for d in values.iter().take(8) {
+        print!("{}", d);
     }
     println!();
 }
 
+fn is_scaffold(map: &[Vec<char>], pos: Point) -> bool {
+    if pos.x < 0 || pos.y < 0 || pos.y >= map.len() as i32 || pos.x >= map[pos.y as usize].len() as i32 {
+        false
+    } else {
+        map[pos.y as usize][pos.x as usize] == '#'
+    }
+}
+
+fn can_move_forward(map: &[Vec<char>], pos: &mut Point, direction: Direction) -> bool {
+    let new_pos = match direction {
+        Direction::UP => Point {x: pos.x, y: pos.y-1},
+        Direction::DOWN => Point {x: pos.x, y: pos.y+1},
+        Direction::LEFT => Point {x: pos.x-1, y: pos.y},
+        Direction::RIGHT => Point {x: pos.x+1, y: pos.y},
+    };
+    if is_scaffold(&map, new_pos) {
+        *pos = new_pos;
+        true
+    } else {
+        false
+    }
+}
+
+fn turn_until_aligned(map: &[Vec<char>], pos: Point, direction: &mut Direction) -> Option<Direction> {
+    let old_direction = *direction;
+    match old_direction {
+        Direction::DOWN | Direction::UP => {
+            if is_scaffold(&map, Point {x: pos.x-1, y: pos.y}) {
+                *direction = Direction::LEFT;
+                if old_direction == Direction::DOWN { Some(Direction::RIGHT) } else { Some(Direction::LEFT) }
+            } else if is_scaffold(&map, Point {x: pos.x+1, y: pos.y}) {
+                *direction = Direction::RIGHT;
+                if old_direction == Direction::DOWN { Some(Direction::LEFT) } else { Some(Direction::RIGHT) }
+            } else {
+                None
+            }
+        }
+        Direction::LEFT | Direction::RIGHT => {
+            if is_scaffold(&map, Point {x: pos.x, y: pos.y-1}) {
+                *direction = Direction::UP;
+                if old_direction == Direction::LEFT { Some(Direction::RIGHT) } else { Some(Direction::LEFT) }
+            } else if is_scaffold(&map, Point {x: pos.x, y: pos.y+1}) {
+                *direction = Direction::DOWN;
+                if old_direction == Direction::LEFT { Some(Direction::LEFT) } else { Some(Direction::RIGHT) }
+            } else {
+                None
+            }
+        }
+    }
+}
+
+fn get_path(map: &[Vec<char>], start: Point) -> Vec<String> {
+    let mut path = Vec::new();
+    let mut direction = match map[start.y as usize][start.x as usize] {
+        '^' => Direction::UP,
+        'v' => Direction::DOWN,
+        '<' => Direction::LEFT,
+        '>' => Direction::RIGHT,
+        _ => panic!("invalid direction")
+    };
+    let mut pos = start;
+    loop {
+        let mut forward = 0;
+        while can_move_forward(&map, &mut pos, direction) {
+            forward += 1;
+        }
+        if forward > 0 {
+            path.push(forward.to_string());
+        }
+        let rotate = turn_until_aligned(&map, pos, &mut direction);
+        let rot_str = match rotate {
+            None => break,
+            Some(Direction::LEFT) => "L",
+            Some(Direction::RIGHT) => "R",
+            _ => panic!("invalid rotation")
+        };
+        path.push(rot_str.to_string());
+    }
+    path
+}
+
+fn day17() {
+    let input = read_file("input17");
+    let input = input.trim_end();
+    let program : Vec<isize> = input.split(',')
+                                    .map(|x| x.parse::<isize>().unwrap())
+                                    .collect();
+
+    let mut computer = IntComputer::new(&program);
+    computer.suspend_on_output = true;
+
+    let mut map = Vec::new();
+    let mut row = Vec::new();
+    loop {
+        match computer.run_program() {
+            ProgramState::SUSPENDED => {
+                let output = (computer.output.pop_front().unwrap() as u8) as char;
+                if output == '\n' {
+                    map.push(row.clone());
+                    row.clear();
+                } else {
+                    row.push(output);
+                }
+            }
+            ProgramState::HALTED => break,
+            _ => {}
+        }
+    }
+    let mut start = Point {x: 0, y: 0};
+    let mut sum = 0;
+    for y in 0..map.len() {
+        for x in 0..map[y].len() {
+            if map[y][x] == '^' || map[y][x] == 'v' || map[y][x] == '>' || map[y][x] == '<' {
+                start = Point {x: x as i32, y: y as i32};
+            }
+            if map[y][x] != '#' || x < 1 || y < 1 || x >= map[y].len()-1 || y >= map.len()-1 {
+                continue;
+            }
+            if map[y][x-1] == '#' && map[y][x+1] == '#' && map[y-1][x] == '#' && map[y+1][x] == '#' {
+                sum += x * y;
+            }
+        }
+    }
+
+    println!("17a: {}", sum);
+
+    let _path = get_path(&map, start);
+
+    // resulting path is: R,10,L,12,R,6,R,10,L,12,R,6,R,6,R,10,R,12,R,6,R,10,L,12,L,12,R,6,R,10,R,12,R,6,R,10,L,12,L,12,R,6,R,10,R,12,R,6,R,10,L,12,L,12,R,6,R,10,R,12,R,6,R,10,L,12,R,6
+    // partitions have been manually determined
+
+    let mut input = String::new();
+    input += "A,A,B,C,B,C,B,C,B,A\n"; // main routine;
+    input += "R,10,L,12,R,6\n"; // A
+    input += "R,6,R,10,R,12,R,6\n"; // B;
+    input += "R,10,L,12,L,12\n"; // C;
+    input += "n\n";
+
+    let mut computer = IntComputer::new(&program);
+    computer.suspend_on_output = true;
+    computer.mem[0] = 2;
+    for i in input.bytes() {
+        computer.input.push_back(i as isize);
+    }
+
+    let mut output = 0;
+    loop {
+        match computer.run_program() {
+            ProgramState::SUSPENDED => output = computer.output.pop_front().unwrap(),
+            ProgramState::HALTED => break,
+            _ => {}
+        }
+    }
+    println!("17b: {}", output);
+}
+
 fn main() {
-    day16();
+    day17();
 }
 
 #[cfg(test)]
