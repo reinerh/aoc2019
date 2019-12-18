@@ -1598,30 +1598,46 @@ fn day15() {
     println!("15b: {}", time);
 }
 
-fn fft_pattern(pos: usize) -> Vec<i8> {
-    let base_pattern = vec![0, 1, 0, -1];
-
-    let mut pattern = Vec::new();
-    pattern.reserve(pos * base_pattern.len());
-
-    for d in base_pattern {
-        for _ in 0..=pos {
-            pattern.push(d);
-        }
+fn fft_pattern(i: usize, j: usize) -> i8 {
+    if j < i {
+        return 0;
     }
-    pattern
+    let len = 4 * (i + 1);
+
+    let offset = (j+1) % len;
+    if offset < (i+1) {
+        return 0;
+    } else if offset < ((i+1) * 2) {
+        return 1;
+    } else if offset < ((i+1) * 3) {
+        return 0;
+    } else if offset < ((i+1) * 4) {
+        return -1;
+    }
+    panic!("invalid offset");
 }
 
 fn fft(input: &[i8]) -> Vec<i8> {
-    let mut output = Vec::new();
+    let mut output = vec![0; input.len()];
 
-    for i in 0..input.len() {
-        let pattern = fft_pattern(i);
+    for i in 0..input.len()/2 {
         let mut sum : i32 = 0;
-        for j in 0..input.len() {
-            sum += input[j] as i32 * pattern[(j+1) % pattern.len()] as i32;
+        for j in i..input.len() {
+            let factor = fft_pattern(i, j);
+            match factor {
+                0 => continue,
+                1 => sum += input[j] as i32,
+               -1 => sum -= input[j] as i32,
+                _ => panic!("unexpected fft pattern value")
+            }
         }
-        output.push((sum % 10).abs() as i8);
+        output[i] = (sum % 10).abs() as i8;
+    }
+    let mut sum = 0;
+    for i in (input.len()/2..input.len()).rev() {
+        sum += input[i];
+        sum %= 10;
+        output[i] = sum;
     }
 
     output
@@ -1640,6 +1656,18 @@ fn day16() {
         print!("{}", d);
     }
     println!();
+
+    /* part 2
+    let mut long_input = String::new();
+    long_input.reserve(input.len() * 10_000);
+    for _ in 0..=10_000 {
+        long_input += input;
+    }
+    let mut values : Vec<i8> = long_input.chars().map(|x| x.to_digit(10).unwrap() as i8).collect();
+    for _ in 0..100 {
+        values = fft(&values);
+    }
+    */
 }
 
 fn is_scaffold(map: &[Vec<char>], pos: Point) -> bool {
