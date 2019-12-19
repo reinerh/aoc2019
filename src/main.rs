@@ -1808,48 +1808,26 @@ fn day17() {
     input += "n\n";
 
     let mut computer = IntComputer::new(&program);
-    computer.suspend_on_output = true;
     computer.mem[0] = 2;
-    for i in input.bytes() {
-        computer.input.push_back(i as isize);
-    }
+    computer.input = input.bytes().map(|i| i as isize).collect();
+    computer.run_program();
 
-    let mut output = 0;
-    loop {
-        match computer.run_program() {
-            ProgramState::SUSPENDED => output = computer.output.pop_front().unwrap(),
-            ProgramState::HALTED => break,
-            _ => {}
-        }
-    }
-    println!("17b: {}", output);
+    println!("17b: {}", computer.output.pop_back().unwrap());
 }
 
 fn check_position(program: &[isize], x: isize, y: isize) -> isize {
     let mut computer = IntComputer::new(program);
-    computer.suspend_on_output = true;
-    let mut output = 0;
     computer.input.push_back(x);
     computer.input.push_back(y);
-    loop {
-        match computer.run_program() {
-            ProgramState::SUSPENDED => output = computer.output.pop_front().unwrap(),
-            ProgramState::HALTED => break,
-            _ => {}
-        }
-    }
-    output
+    computer.run_program();
+    computer.output.pop_front().unwrap()
 }
 
 fn check_square_fits(map: &HashSet<(isize, isize)>, size: isize, x: isize, y: isize) -> bool {
-    for i in 0..size {
-        for j in 0..size {
-            if !map.contains(&(x-j, y-i)) {
-                return false;
-            }
-        }
-    }
-    true
+    map.contains(&(x, y-size+1)) &&
+    map.contains(&(x-size+1, y)) &&
+    map.contains(&(x-size+1, y-size+1)) &&
+    map.contains(&(x, y))
 }
 
 fn day19() {
