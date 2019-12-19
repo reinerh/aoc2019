@@ -4,8 +4,7 @@ use std::fs::{self, File};
 use std::io::prelude::*;
 use std::cmp;
 use std::cmp::Ordering;
-use std::collections::VecDeque;
-use std::collections::HashMap;
+use std::collections::{VecDeque, HashMap, HashSet};
 
 #[derive(Eq, PartialEq, Clone, Copy, Debug, Hash)]
 struct Point {
@@ -1826,8 +1825,77 @@ fn day17() {
     println!("17b: {}", output);
 }
 
+fn check_position(program: &[isize], x: isize, y: isize) -> isize {
+    let mut computer = IntComputer::new(program);
+    computer.suspend_on_output = true;
+    let mut output = 0;
+    computer.input.push_back(x);
+    computer.input.push_back(y);
+    loop {
+        match computer.run_program() {
+            ProgramState::SUSPENDED => output = computer.output.pop_front().unwrap(),
+            ProgramState::HALTED => break,
+            _ => {}
+        }
+    }
+    output
+}
+
+fn check_square_fits(map: &HashSet<(isize, isize)>, size: isize, x: isize, y: isize) -> bool {
+    for i in 0..size {
+        for j in 0..size {
+            if !map.contains(&(x-j, y-i)) {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+fn day19() {
+    let input = read_file("input19");
+    let input = input.trim_end();
+    let program : Vec<isize> = input.split(',')
+                                    .map(|x| x.parse::<isize>().unwrap())
+                                    .collect();
+
+    let mut sum = 0;
+    for x in 0..50 {
+        for y in 0..50 {
+            sum += check_position(&program, x, y);
+        }
+    }
+    println!("19a: {}", sum);
+
+    let mut map = HashSet::new();
+    let mut tractor_begin = 0;
+    'outer: for y in 0..1500 {
+        let mut was_tractor = false;
+        for x in tractor_begin..1500 {
+            let state = check_position(&program, x, y);
+            if state == 0 {
+                if was_tractor {
+                    /* any further position on the x axis will be space */
+                    break;
+                }
+            } else {
+                if !was_tractor {
+                    was_tractor = true;
+                    tractor_begin = x;
+                }
+                map.insert((x, y));
+                if check_square_fits(&map, 100, x, y) {
+                    println!("19b: {}", (x-99)*10_000 + (y-99));
+                    break 'outer;
+                }
+            }
+            sum += state;
+        }
+    }
+}
+
 fn main() {
-    day17();
+    day19();
 }
 
 #[cfg(test)]
