@@ -1617,7 +1617,7 @@ fn fft_pattern(i: usize, j: usize) -> i8 {
 }
 
 fn fft(input: &[i8]) -> Vec<i8> {
-    let mut output = vec![0; input.len()];
+    let mut output = vec![0; input.len()/2];
 
     for i in 0..input.len()/2 {
         let mut sum : i32 = 0;
@@ -1632,6 +1632,15 @@ fn fft(input: &[i8]) -> Vec<i8> {
         }
         output[i] = (sum % 10).abs() as i8;
     }
+    let mut half2 = fft_2nd_half(&input).split_off(input.len()/2);
+    output.append(&mut half2);
+
+    output
+}
+
+fn fft_2nd_half(input: &[i8]) -> Vec<i8> {
+    let mut output = vec![0; input.len()];
+
     let mut sum = 0;
     for i in (input.len()/2..input.len()).rev() {
         sum += input[i];
@@ -1656,17 +1665,25 @@ fn day16() {
     }
     println!();
 
-    /* part 2
     let mut long_input = String::new();
     long_input.reserve(input.len() * 10_000);
-    for _ in 0..=10_000 {
+    for _ in 0..10_000 {
         long_input += input;
     }
     let mut values : Vec<i8> = long_input.chars().map(|x| x.to_digit(10).unwrap() as i8).collect();
-    for _ in 0..100 {
-        values = fft(&values);
+    let mut pos : usize = 0;
+    for i in values.iter().take(7) {
+        pos *= 10;
+        pos += *i as usize;
     }
-    */
+    for _ in 0..100 {
+        values = fft_2nd_half(&values);
+    }
+    print!("16b: ");
+    for d in values.iter().skip(pos).take(8) {
+        print!("{}", d);
+    }
+    println!();
 }
 
 fn is_scaffold(map: &[Vec<char>], pos: Point) -> bool {
