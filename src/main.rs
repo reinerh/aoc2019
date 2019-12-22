@@ -1084,7 +1084,7 @@ fn day12() {
         Moon::new(-1,  5,  -1),
         Moon::new( 4,  7,  -7),
     ];
-    let mut moons = initial_state.clone();
+    let mut moons = initial_state;
 
     for _ in 0..1000 {
         simulate_moons(&mut moons);
@@ -1889,8 +1889,58 @@ fn day19() {
     }
 }
 
+fn day21() {
+    let input = read_file("input21");
+    let input = input.trim_end();
+    let program: Vec<isize> = input.split(',')
+                                   .map(|x| x.parse::<isize>().unwrap())
+                                   .collect();
+
+    // !A OR (!C AND D)
+    let script = "NOT A J\n\
+                  NOT C T\n\
+                  AND D T\n\
+                  OR T J\n\
+                  WALK\n";
+
+    let mut computer = IntComputer::new(&program);
+    computer.input = script.bytes().map(|b| b as isize).collect();
+    computer.run_program();
+    if *computer.output.back().unwrap() > 127 {
+        println!("21a: {}", computer.output.back().unwrap());
+    } else {
+        for c in computer.output {
+            print!("{}", (c as u8) as char);
+        }
+    }
+
+    // (!A OR !B OR !C) AND D AND H OR !A
+    let script = "NOT A J\n\
+                  NOT B T\n\
+                  OR T J\n\
+                  NOT C T\n\
+                  OR T J\n\
+                  AND D J\n\
+                  AND H J\n\
+                  NOT A T\n\
+                  OR T J\n\
+                  RUN\n";
+
+    let mut computer = IntComputer::new(&program);
+    computer.input = script.bytes().map(|b| b as isize).collect();
+    computer.run_program();
+
+    if *computer.output.back().unwrap() > 127 {
+        println!("21b: {}", computer.output.back().unwrap());
+    } else {
+        for c in computer.output {
+            print!("{}", (c as u8) as char);
+        }
+    }
+}
+
 fn main() {
-    day19();
+    day21();
 }
 
 #[cfg(test)]
