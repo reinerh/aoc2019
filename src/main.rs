@@ -1939,8 +1939,114 @@ fn day21() {
     }
 }
 
+#[derive(Clone, Copy)]
+enum ShuffleTechnique {
+    DealInto,
+    CutN { n: i64 },
+    DealInc { n: u128 },
+}
+
+impl ShuffleTechnique {
+    fn parse(input: &str) -> ShuffleTechnique {
+        if input == "deal into new stack" {
+            ShuffleTechnique::DealInto
+        } else if input.find("cut").is_some() {
+            let n = input.split_at(4).1.parse::<i64>().unwrap();
+            ShuffleTechnique::CutN { n }
+        }
+        else if input.find("deal with increment").is_some() {
+            let n = input.split_at(20).1.parse::<u128>().unwrap();
+            ShuffleTechnique::DealInc { n }
+        }
+        else {
+            panic!("unsupported technique")
+        }
+    }
+}
+
+struct SpaceCards {
+    deck: VecDeque<usize>,
+}
+
+impl SpaceCards {
+    fn new(size: usize) -> SpaceCards {
+        SpaceCards {
+            deck: (0..size).collect()
+        }
+    }
+
+    fn shuffle(&mut self, technique: ShuffleTechnique) {
+        match technique {
+            ShuffleTechnique::DealInto => {
+                self.deck = self.deck.iter().rev().copied().collect();
+            },
+            ShuffleTechnique::CutN { n } => {
+                if n >= 0 {
+                    self.deck.rotate_left(n as usize);
+                } else {
+                    self.deck.rotate_right(n.abs() as usize);
+                }
+            },
+            ShuffleTechnique::DealInc { n } => {
+                let mut deck = VecDeque::new();
+                deck.resize(self.deck.len(), 0);
+                let mut pos = 0;
+                for c in self.deck.iter() {
+                    deck[pos] = *c;
+                    pos += n as usize;
+                    pos %= self.deck.len();
+                }
+                self.deck = deck;
+            },
+        }
+    }
+
+    fn unshuffle(size: u128, pos: u128, technique: ShuffleTechnique) -> u128 {
+        match technique {
+            ShuffleTechnique::DealInto => {
+                size - pos - 1
+            },
+            ShuffleTechnique::CutN { n } => {
+                let shift = if n < 0 {
+                    size - (n.abs() as u128)
+                } else {
+                    n as u128
+                };
+                (pos + shift) % size
+            },
+            ShuffleTechnique::DealInc { n } => {
+                // n*x = t*size + pos
+                // x = (t*size + pos) / n
+                let mut x = None;
+                for t in 0..n {
+                    let tmp = t * size + pos;
+                    if tmp % n == 0 {
+                        x = Some(tmp / n);
+                        break;
+                    }
+                }
+                x.unwrap()
+            },
+        }
+    }
+}
+
+fn day22() {
+    let input = read_file("input22");
+    let input = input.trim_end();
+    let shuffles: Vec<ShuffleTechnique> = input.split('\n')
+                                               .map(|t| ShuffleTechnique::parse(t))
+                                               .collect();
+
+    let mut cards = SpaceCards::new(10007);
+    for technique in &shuffles {
+        cards.shuffle(*technique);
+    }
+    println!("22a: {}", cards.deck.iter().position(|&c| c == 2019).unwrap());
+}
+
 fn main() {
-    day21();
+    day22();
 }
 
 #[cfg(test)]
@@ -2246,5 +2352,65 @@ mod tests {
             values = fft(&values);
         }
         assert_eq!(values[0..8], [5,2,4,3,2,1,3,3]);
+    }
+
+    #[test]
+    fn test_day22() {
+        let techniques = vec![
+            ShuffleTechnique::parse("deal with increment 7"),
+            ShuffleTechnique::parse("deal into new stack"),
+            ShuffleTechnique::parse("deal into new stack"),
+        ];
+        let mut cards = SpaceCards::new(10);
+
+        for technique in techniques {
+            cards.shuffle(technique);
+        }
+        assert_eq!(cards.deck, [0,3,6,9,2,5,8,1,4,7]);
+
+        let techniques = vec![
+            ShuffleTechnique::parse("cut 6"),
+            ShuffleTechnique::parse("deal with increment 7"),
+            ShuffleTechnique::parse("deal into new stack"),
+        ];
+        let mut cards = SpaceCards::new(10);
+        for technique in techniques {
+            cards.shuffle(technique);
+        }
+        assert_eq!(cards.deck, [3,0,7,4,1,8,5,2,9,6]);
+
+        let techniques = vec![
+            ShuffleTechnique::parse("deal into new stack"),
+            ShuffleTechnique::parse("cut -2"),
+            ShuffleTechnique::parse("deal with increment 7"),
+            ShuffleTechnique::parse("cut 8"),
+            ShuffleTechnique::parse("cut -4"),
+            ShuffleTechnique::parse("deal with increment 7"),
+            ShuffleTechnique::parse("cut 3"),
+            ShuffleTechnique::parse("deal with increment 9"),
+            ShuffleTechnique::parse("deal with increment 3"),
+            ShuffleTechnique::parse("cut -1"),
+        ];
+        let mut cards = SpaceCards::new(10);
+        for technique in techniques {
+            cards.shuffle(technique);
+        }
+        assert_eq!(cards.deck, [9,2,5,8,1,4,7,0,3,6]);
+
+
+        assert_eq!(SpaceCards::unshuffle(10, 2, ShuffleTechnique::DealInto), 7);
+        assert_eq!(SpaceCards::unshuffle(10, 8, ShuffleTechnique::DealInto), 1);
+
+        assert_eq!(SpaceCards::unshuffle(10, 0, ShuffleTechnique::CutN {n: 3}), 3);
+        assert_eq!(SpaceCards::unshuffle(10, 3, ShuffleTechnique::CutN {n: 3}), 6);
+        assert_eq!(SpaceCards::unshuffle(10, 0, ShuffleTechnique::CutN {n: -4}), 6);
+        assert_eq!(SpaceCards::unshuffle(10, 8, ShuffleTechnique::CutN {n: -4}), 4);
+
+        assert_eq!(SpaceCards::unshuffle(10, 0, ShuffleTechnique::DealInc {n: 3}), 0);
+        assert_eq!(SpaceCards::unshuffle(10, 3, ShuffleTechnique::DealInc {n: 3}), 1);
+        assert_eq!(SpaceCards::unshuffle(10, 6, ShuffleTechnique::DealInc {n: 3}), 2);
+        assert_eq!(SpaceCards::unshuffle(10, 9, ShuffleTechnique::DealInc {n: 3}), 3);
+        assert_eq!(SpaceCards::unshuffle(10, 2, ShuffleTechnique::DealInc {n: 3}), 4);
+        assert_eq!(SpaceCards::unshuffle(10, 7, ShuffleTechnique::DealInc {n: 3}), 9);
     }
 }
