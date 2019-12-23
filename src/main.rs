@@ -2045,8 +2045,79 @@ fn day22() {
     println!("22a: {}", cards.deck.iter().position(|&c| c == 2019).unwrap());
 }
 
+fn day23() {
+    let input = read_file("input23");
+    let input = input.trim_end();
+    let program: Vec<isize> = input.split(',')
+                                   .map(|x| x.parse::<isize>().unwrap())
+                                   .collect();
+
+    let mut computers = Vec::new();
+    let mut idling = Vec::new();
+    for i in 0..50 {
+        let mut computer = IntComputer::new(&program);
+        computer.suspend_on_output = true;
+        computer.input.push_back(i);
+        computers.push(computer);
+        idling.push(0);
+    }
+    let mut queues = HashMap::new();
+
+    let mut found_a = false;
+    let mut previous_nat = None;
+    for i in (0..50).cycle() {
+        match computers[i].run_program() {
+            ProgramState::NEEDINPUT => {
+                let queue = queues.entry(i as isize).or_insert_with(VecDeque::new);
+                match queue.pop_front() {
+                    None => {
+                        idling[i] += 1;
+                        computers[i].input.push_back(-1);
+                    },
+                    Some((x,y)) => {
+                        idling[i] = 0;
+                        computers[i].input.push_back(x);
+                        computers[i].input.push_back(y);
+                    }
+                }
+            },
+            ProgramState::SUSPENDED => {
+                if computers[i].output.len() >= 3 {
+                    let dst = computers[i].output.pop_front().unwrap();
+                    let x = computers[i].output.pop_front().unwrap();
+                    let y = computers[i].output.pop_front().unwrap();
+                    queues.entry(dst).or_insert_with(VecDeque::new).push_back((x,y));
+                }
+                idling[i] = 0;
+            }
+            _ => panic!("computer halted")
+        }
+        if let Some(queue) = queues.get_mut(&255) {
+            if !found_a {
+                let (_, y) = queue.front().unwrap();
+                println!("23a: {}", y);
+                found_a = true;
+            }
+            if idling.iter().filter(|&i| *i >= 2).count() == 50 {
+                let (x, y) = queue.pop_back().unwrap();
+                if let Some(prev_y) = previous_nat {
+                    if prev_y == y {
+                        println!("23b: {}", y);
+                        break;
+                    }
+                }
+                previous_nat = Some(y);
+                queues.get_mut(&0).unwrap().push_back((x,y));
+                for idle in idling.iter_mut() {
+                    *idle = 0;
+                }
+            }
+        }
+    }
+}
+
 fn main() {
-    day22();
+    day23();
 }
 
 #[cfg(test)]
