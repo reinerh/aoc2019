@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 use std::fs::{self, File};
+use std::io;
 use std::io::prelude::*;
 use std::cmp;
 use std::cmp::Ordering;
@@ -2335,8 +2336,40 @@ fn day24() {
     println!("24b: {}", count);
 }
 
+fn day25() {
+    let input = read_file("input25");
+    let input = input.trim_end();
+    let program: Vec<isize> = input.split(',')
+                                   .map(|x| x.parse::<isize>().unwrap())
+                                   .collect();
+
+    let mut computer = IntComputer::new(&program);
+    computer.suspend_on_output = true;
+    loop {
+        match computer.run_program() {
+            ProgramState::SUSPENDED => {
+                while let Some(out) = computer.output.pop_front() {
+                    let c = (out as u8) as char;
+                    print!("{}", c);
+                }
+            }
+            ProgramState::NEEDINPUT => {
+                let mut input = String::new();
+                io::stdin().read_line(&mut input).unwrap();
+                for c in input.bytes() {
+                    computer.input.push_back(c as isize);
+                }
+            }
+            ProgramState::HALTED => break,
+            _ => (),
+        }
+    }
+    // take these through checkpoint:
+    // festive hat + mutex + coin + whirled peas
+}
+
 fn main() {
-    day24();
+    day25();
 }
 
 #[cfg(test)]
