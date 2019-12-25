@@ -2116,8 +2116,227 @@ fn day23() {
     }
 }
 
+fn biodiversity(map: &[Vec<bool>]) -> u32 {
+    let mut diversity = 0;
+    for row in map.iter().rev() {
+        for b in row.iter().rev() {
+            diversity *= 2;
+            if *b {
+                diversity += 1;
+            }
+        }
+    }
+    diversity
+}
+
+fn bio_neighbors(map: &[Vec<bool>], x: usize, y: usize) -> u32 {
+    let mut neighbors = 0;
+
+    if x > 0 && map[y][x-1] {
+        neighbors += 1;
+    }
+    if y > 0 && map[y-1][x] {
+        neighbors += 1;
+    }
+    if x < map[y].len()-1 && map[y][x+1] {
+        neighbors += 1;
+    }
+    if y < map.len()-1 && map[y+1][x] {
+        neighbors += 1;
+    }
+
+    neighbors
+}
+
+fn bio_simulate(map: &[Vec<bool>]) -> Vec<Vec<bool>> {
+    let mut new_map = Vec::new();
+
+    for i in 0..map.len() {
+        let mut row = Vec::new();
+        for j in 0..map[i].len() {
+            let neighbors = bio_neighbors(map, j, i);
+            if map[i][j] {
+                row.push(neighbors == 1);
+            } else {
+                row.push(neighbors == 1 || neighbors == 2);
+            }
+        }
+        new_map.push(row);
+    }
+
+    new_map
+}
+
+fn bio_neighbors_recursive(map: &HashMap<i32, Vec<Vec<bool>>>, depth: i32, x: usize, y: usize) -> u32 {
+    if x == 2 && y == 2 {
+        panic!("should not happen");
+    }
+
+    let mut neighbors = 0;
+    let curr_map = map.get(&depth).unwrap();
+
+    if x == 0 {
+        if curr_map[y][x+1] { neighbors += 1; }
+        if let Some(above) = map.get(&(depth-1)) {
+            if above[2][1] { neighbors += 1; }
+        }
+    } else if x == 4 {
+        if curr_map[y][x-1] { neighbors += 1; }
+        if let Some(above) = map.get(&(depth-1)) {
+            if above[2][3] { neighbors += 1; }
+        }
+    } else if x == 1 && y == 2 {
+        if curr_map[y][x-1] { neighbors += 1; }
+        if let Some(below) = map.get(&(depth+1)) {
+            if below[0][0] { neighbors += 1; }
+            if below[1][0] { neighbors += 1; }
+            if below[2][0] { neighbors += 1; }
+            if below[3][0] { neighbors += 1; }
+            if below[4][0] { neighbors += 1; }
+        }
+    } else if x == 3 && y == 2 {
+        if curr_map[y][x+1] { neighbors += 1; }
+        if let Some(below) = map.get(&(depth+1)) {
+            if below[0][4] { neighbors += 1; }
+            if below[1][4] { neighbors += 1; }
+            if below[2][4] { neighbors += 1; }
+            if below[3][4] { neighbors += 1; }
+            if below[4][4] { neighbors += 1; }
+        }
+    } else {
+        if curr_map[y][x-1] { neighbors += 1; }
+        if curr_map[y][x+1] { neighbors += 1; }
+    }
+
+    if y == 0 {
+        if curr_map[y+1][x] { neighbors += 1; }
+        if let Some(above) = map.get(&(depth-1)) {
+            if above[1][2] { neighbors += 1; }
+        }
+    } else if y == 4 {
+        if curr_map[y-1][x] { neighbors += 1; }
+        if let Some(above) = map.get(&(depth-1)) {
+            if above[3][2] { neighbors += 1; }
+        }
+    } else if y == 1 && x == 2 {
+        if curr_map[y-1][x] { neighbors += 1; }
+        if let Some(below) = map.get(&(depth+1)) {
+            if below[0][0] { neighbors += 1; }
+            if below[0][1] { neighbors += 1; }
+            if below[0][2] { neighbors += 1; }
+            if below[0][3] { neighbors += 1; }
+            if below[0][4] { neighbors += 1; }
+        }
+    } else if y == 3 && x == 2 {
+        if curr_map[y+1][x] { neighbors += 1; }
+        if let Some(below) = map.get(&(depth+1)) {
+            if below[4][0] { neighbors += 1; }
+            if below[4][1] { neighbors += 1; }
+            if below[4][2] { neighbors += 1; }
+            if below[4][3] { neighbors += 1; }
+            if below[4][4] { neighbors += 1; }
+        }
+    } else {
+        if curr_map[y-1][x] { neighbors += 1; }
+        if curr_map[y+1][x] { neighbors += 1; }
+    }
+
+    neighbors
+}
+
+fn bio_map_append_minmax(map: &mut HashMap<i32, Vec<Vec<bool>>>) {
+    let min_depth = map.iter().map(|(d,_)| *d).min().unwrap();
+    let max_depth = map.iter().map(|(d,_)| *d).max().unwrap();
+
+    let mut empty = Vec::new();
+    for _ in 0..5 {
+        let mut v = Vec::new();
+        for _ in 0..5 {
+            v.push(false);
+        }
+        empty.push(v);
+    }
+    map.insert(min_depth-1, empty.clone());
+    map.insert(max_depth+1, empty);
+}
+
+fn bio_simulate_recursive(global_map: &HashMap<i32, Vec<Vec<bool>>>) -> HashMap<i32, Vec<Vec<bool>>> {
+    let mut new_global_map = HashMap::new();
+
+    for (depth, map) in global_map {
+        let mut new_map = Vec::new();
+        for i in 0..map.len() {
+            let mut row = Vec::new();
+            for j in 0..map[i].len() {
+                if i == 2 && j == 2 {
+                    row.push(false);
+                    continue;
+                }
+                let neighbors = bio_neighbors_recursive(global_map, *depth, j, i);
+                if map[i][j] {
+                    row.push(neighbors == 1);
+                } else {
+                    row.push(neighbors == 1 || neighbors == 2);
+                }
+            }
+            new_map.push(row);
+        }
+        new_global_map.insert(*depth, new_map);
+    }
+    bio_map_append_minmax(&mut new_global_map);
+
+    new_global_map
+}
+
+fn str_to_biomap(input: &str) -> Vec<Vec<bool>> {
+    let mut map = Vec::new();
+    for row in input.split('\n') {
+        let mut row_vec = Vec::new();
+        for c in row.chars() {
+            row_vec.push(c == '#');
+        }
+        map.push(row_vec);
+    }
+    map
+}
+
+fn day24() {
+    let input = read_file("input24");
+    let input = input.trim_end();
+    let mut map = str_to_biomap(&input);
+
+    let mut history = HashSet::new();
+    loop {
+        let div = biodiversity(&map);
+        if history.contains(&div) {
+            break;
+        }
+        history.insert(biodiversity(&map));
+        map = bio_simulate(&map);
+    }
+    println!("24a: {}", biodiversity(&map));
+
+    let mut map = HashMap::new();
+    map.insert(0, str_to_biomap(&input));
+    bio_map_append_minmax(&mut map);
+    for _ in 0..200 {
+        map = bio_simulate_recursive(&map);
+    }
+    let mut count = 0;
+    for (_, level) in map {
+        for row in level {
+            for pos in row {
+                if pos {
+                    count += 1;
+                }
+            }
+        }
+    }
+    println!("24b: {}", count);
+}
+
 fn main() {
-    day23();
+    day24();
 }
 
 #[cfg(test)]
@@ -2483,5 +2702,65 @@ mod tests {
         assert_eq!(SpaceCards::unshuffle(10, 9, ShuffleTechnique::DealInc {n: 3}), 3);
         assert_eq!(SpaceCards::unshuffle(10, 2, ShuffleTechnique::DealInc {n: 3}), 4);
         assert_eq!(SpaceCards::unshuffle(10, 7, ShuffleTechnique::DealInc {n: 3}), 9);
+    }
+
+    #[test]
+    fn test_day24() {
+        let map = ".....\n\
+                   .....\n\
+                   .....\n\
+                   #....\n\
+                   .#...";
+        let map = str_to_biomap(&map);
+        assert_eq!(biodiversity(&map), 2129920);
+
+        let map1 = "....#\n\
+                    #..#.\n\
+                    #..##\n\
+                    ..#..\n\
+                    #....";
+        let map1 = str_to_biomap(&map1);
+        let map2 = "#..#.\n\
+                    ####.\n\
+                    ###.#\n\
+                    ##.##\n\
+                    .##..";
+        let map2 = str_to_biomap(&map2);
+        let map3 = "#####\n\
+                    ....#\n\
+                    ....#\n\
+                    ...#.\n\
+                    #.###";
+        let map3 = str_to_biomap(&map3);
+        let map4 = "#....\n\
+                    ####.\n\
+                    ...##\n\
+                    #.##.\n\
+                    .##.#";
+        let map4 = str_to_biomap(&map4);
+        let map5 = "####.\n\
+                    ....#\n\
+                    ##..#\n\
+                    .....\n\
+                    ##...";
+        let map5 = str_to_biomap(&map5);
+
+        assert_eq!(bio_simulate(&map1), map2);
+        assert_eq!(bio_simulate(&map2), map3);
+        assert_eq!(bio_simulate(&map3), map4);
+        assert_eq!(bio_simulate(&map4), map5);
+
+        let expected = ".#...\n\
+                        .#.##\n\
+                        .#?..\n\
+                        .....\n\
+                        .....";
+        let mut global_map = HashMap::new();
+        global_map.insert(0, map1);
+        bio_map_append_minmax(&mut global_map);
+        for _ in 0..10 {
+            global_map = bio_simulate_recursive(&global_map);
+        }
+        assert_eq!(*global_map.get(&0).unwrap(), str_to_biomap(&expected));
     }
 }
