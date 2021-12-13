@@ -1890,23 +1890,81 @@ fn day19() {
     }
 }
 
-fn maze_portal_neighbor(portals: &HashMap<String, Vec<Position>>, pos: &Position) -> Option<Position> {
-    for (_, positions) in portals {
+#[derive(PartialEq,Eq,Debug)]
+enum PortalType {
+    Outer,
+    Inner,
+}
+
+fn portal_type_at(portals: &HashMap<String, Vec<Position>>, pos: &Position) -> PortalType {
+    if pos.x < 2 || pos.y < 2 {
+        return PortalType::Outer;
+    }
+
+    let max_x = portals.values().flatten().map(|&pos| pos.x).max().unwrap();
+    let max_y = portals.values().flatten().map(|&pos| pos.y).max().unwrap();
+
+    if pos.x == max_x || pos.y == max_y {
+        return PortalType::Outer;
+    }
+
+    PortalType::Inner
+}
+
+fn maze_portal_neighbor(portals: &HashMap<String, Vec<Position>>, pos: &Position, recursive: bool) -> Option<Position> {
+    let mut neigh = None;
+    let mut portal_pos = Position { x:0, y:0, z:0 };
+    let mut portal_name = "";
+    for (name, positions) in portals {
+        portal_name = name;
+
         let check = Position { x: pos.x + 1, y: pos.y, z: 0 };
-        if positions[0] == check { return Some(positions[1]); }
-        if positions[1] == check { return Some(positions[0]); }
+        portal_pos = check;
+        portal_pos.z = pos.z;
+        if positions[0] == check { neigh = Some(positions[1]); break; }
+        if positions[1] == check { neigh = Some(positions[0]); break; }
 
         let check = Position { x: pos.x - 1, y: pos.y, z: 0 };
-        if positions[0] == check { return Some(positions[1]); }
-        if positions[1] == check { return Some(positions[0]); }
+        portal_pos = check;
+        portal_pos.z = pos.z;
+        if positions[0] == check { neigh = Some(positions[1]); break; }
+        if positions[1] == check { neigh = Some(positions[0]); break; }
 
         let check = Position { x: pos.x, y: pos.y + 1, z: 0 };
-        if positions[0] == check { return Some(positions[1]); }
-        if positions[1] == check { return Some(positions[0]); }
+        portal_pos = check;
+        portal_pos.z = pos.z;
+        if positions[0] == check { neigh = Some(positions[1]); break; }
+        if positions[1] == check { neigh = Some(positions[0]); break; }
 
         let check = Position { x: pos.x, y: pos.y - 1, z: 0 };
-        if positions[0] == check { return Some(positions[1]); }
-        if positions[1] == check { return Some(positions[0]); }
+        portal_pos = check;
+        portal_pos.z = pos.z;
+        if positions[0] == check { neigh = Some(positions[1]); break; }
+        if positions[1] == check { neigh = Some(positions[0]); break; }
+    }
+    if !recursive {
+        /* ignore z level */
+        return neigh;
+    }
+    if let Some(mut p) = neigh {
+        let old = portal_type_at(portals, &portal_pos);
+        let new = portal_type_at(portals, &p);
+
+        if portal_pos.z == 0 && old == PortalType::Outer && portal_name != "AA" && portal_name != "ZZ" {
+            return None;
+        }
+        if portal_pos.z > 0 && (portal_name == "AA" || portal_name == "ZZ") {
+            return None;
+        }
+
+        if old == new {
+            p.z = portal_pos.z;
+        } else if old == PortalType::Outer {
+            p.z = portal_pos.z - 1;
+        } else {
+            p.z = portal_pos.z + 1;
+        }
+        return Some(p);
     }
     None
 }
@@ -1916,25 +1974,25 @@ fn maze_neighbors(passages: &HashSet<Position>, pos: &Position) -> HashSet<Posit
 
     let check = Position { x: pos.x + 1, y: pos.y, z: 0 };
     if passages.contains(&check) {
-        neighbors.insert(check);
+        neighbors.insert(Position { x: check.x, y: check.y, z: pos.z });
     }
     let check = Position { x: pos.x - 1, y: pos.y, z: 0 };
     if passages.contains(&check) {
-        neighbors.insert(check);
+        neighbors.insert(Position { x: check.x, y: check.y, z: pos.z });
     }
     let check = Position { x: pos.x, y: pos.y + 1, z: 0 };
     if passages.contains(&check) {
-        neighbors.insert(check);
+        neighbors.insert(Position { x: check.x, y: check.y, z: pos.z });
     }
     let check = Position { x: pos.x, y: pos.y - 1, z: 0 };
     if passages.contains(&check) {
-        neighbors.insert(check);
+        neighbors.insert(Position { x: check.x, y: check.y, z: pos.z });
     }
 
     neighbors
 }
 
-fn steps_through_maze<T: AsRef<str>>(input: &[T]) -> usize {
+fn steps_through_maze<T: AsRef<str>>(input: &[T], recursive: bool) -> usize {
     let mut map = HashMap::new();
     let mut passages = HashSet::new();
     for (y, line) in input.iter().enumerate() {
@@ -1948,37 +2006,37 @@ fn steps_through_maze<T: AsRef<str>>(input: &[T]) -> usize {
     }
     let mut portals = HashMap::new();
     for passage in &passages {
-        let check = Position { x: passage.x - 1, y: passage.y, z: 0 };
+        let check = Position { x: passage.x - 1, y: passage.y, z: passage.z };
         if let Some(pos) = map.get(&check) {
             if pos.is_ascii_uppercase() {
-                let portal = map.get(&Position { x: check.x - 1, y: check.y, z: 0 }).unwrap().to_string() + &pos.to_string();
+                let portal = map.get(&Position { x: check.x - 1, y: check.y, z: check.z }).unwrap().to_string() + &pos.to_string();
                 let entry = portals.entry(portal).or_insert_with(Vec::new);
                 entry.push(check);
             }
         }
 
-        let check = Position { x: passage.x + 1, y: passage.y, z: 0 };
+        let check = Position { x: passage.x + 1, y: passage.y, z: passage.z };
         if let Some(pos) = map.get(&check) {
             if pos.is_ascii_uppercase() {
-                let portal = pos.to_string() + &map.get(&Position { x: check.x + 1, y: check.y, z: 0 }).unwrap().to_string();
+                let portal = pos.to_string() + &map.get(&Position { x: check.x + 1, y: check.y, z: check.z }).unwrap().to_string();
                 let entry = portals.entry(portal).or_insert_with(Vec::new);
                 entry.push(check);
             }
         }
 
-        let check = Position { x: passage.x, y: passage.y - 1, z: 0 };
+        let check = Position { x: passage.x, y: passage.y - 1, z: passage.z };
         if let Some(pos) = map.get(&check) {
             if pos.is_ascii_uppercase() {
-                let portal = map.get(&Position { x: check.x, y: check.y - 1, z: 0 }).unwrap().to_string() + &pos.to_string();
+                let portal = map.get(&Position { x: check.x, y: check.y - 1, z: check.z }).unwrap().to_string() + &pos.to_string();
                 let entry = portals.entry(portal).or_insert_with(Vec::new);
                 entry.push(check);
             }
         }
 
-        let check = Position { x: passage.x, y: passage.y + 1, z: 0 };
+        let check = Position { x: passage.x, y: passage.y + 1, z: passage.z };
         if let Some(pos) = map.get(&check) {
             if pos.is_ascii_uppercase() {
-                let portal = pos.to_string() + &map.get(&Position { x: check.x, y: check.y + 1, z: 0 }).unwrap().to_string();
+                let portal = pos.to_string() + &map.get(&Position { x: check.x, y: check.y + 1, z: check.z }).unwrap().to_string();
                 let entry = portals.entry(portal).or_insert_with(Vec::new);
                 entry.push(check);
             }
@@ -1999,7 +2057,7 @@ fn steps_through_maze<T: AsRef<str>>(input: &[T]) -> usize {
                 if neighbor == goal { return steps - 1; }
                 new_filled.insert(neighbor);
             }
-            if let Some(neighbor) = maze_portal_neighbor(&portals, pos) {
+            if let Some(neighbor) = maze_portal_neighbor(&portals, pos, recursive) {
                 for neigh in maze_neighbors(&passages, &neighbor) {
                     if neighbor == goal { return steps - 1; }
                     new_filled.insert(neigh);
@@ -2015,7 +2073,8 @@ fn day20() {
     let input = read_file("input20");
     let input : Vec<&str> = input.split_terminator('\n').collect();
 
-    println!("20a: {}", steps_through_maze(&input));
+    println!("20a: {}", steps_through_maze(&input, false));
+    println!("20b: {}", steps_through_maze(&input, true));
 }
 
 fn day21() {
@@ -2828,7 +2887,7 @@ mod tests {
             "             Z       ",
             "             Z       ",
         ];
-        assert_eq!(steps_through_maze(&input), 23);
+        assert_eq!(steps_through_maze(&input, false), 23);
 
         let input = [
             "                   A               ",
@@ -2869,7 +2928,48 @@ mod tests {
             "           B   J   C               ",
             "           U   P   P               ",
         ];
-        assert_eq!(steps_through_maze(&input), 58);
+        assert_eq!(steps_through_maze(&input, false), 58);
+
+        let input = [
+            "             Z L X W       C                 ",
+            "             Z P Q B       K                 ",
+            "  ###########.#.#.#.#######.###############  ",
+            "  #...#.......#.#.......#.#.......#.#.#...#  ",
+            "  ###.#.#.#.#.#.#.#.###.#.#.#######.#.#.###  ",
+            "  #.#...#.#.#...#.#.#...#...#...#.#.......#  ",
+            "  #.###.#######.###.###.#.###.###.#.#######  ",
+            "  #...#.......#.#...#...#.............#...#  ",
+            "  #.#########.#######.#.#######.#######.###  ",
+            "  #...#.#    F       R I       Z    #.#.#.#  ",
+            "  #.###.#    D       E C       H    #.#.#.#  ",
+            "  #.#...#                           #...#.#  ",
+            "  #.###.#                           #.###.#  ",
+            "  #.#....OA                       WB..#.#..ZH",
+            "  #.###.#                           #.#.#.#  ",
+            "CJ......#                           #.....#  ",
+            "  #######                           #######  ",
+            "  #.#....CK                         #......IC",
+            "  #.###.#                           #.###.#  ",
+            "  #.....#                           #...#.#  ",
+            "  ###.###                           #.#.#.#  ",
+            "XF....#.#                         RF..#.#.#  ",
+            "  #####.#                           #######  ",
+            "  #......CJ                       NM..#...#  ",
+            "  ###.#.#                           #.###.#  ",
+            "RE....#.#                           #......RF",
+            "  ###.###        X   X       L      #.#.#.#  ",
+            "  #.....#        F   Q       P      #.#.#.#  ",
+            "  ###.###########.###.#######.#########.###  ",
+            "  #.....#...#.....#.......#...#.....#.#...#  ",
+            "  #####.#.###.#######.#######.###.###.#.#.#  ",
+            "  #.......#.......#.#.#.#.#...#...#...#.#.#  ",
+            "  #####.###.#####.#.#.#.#.###.###.#.###.###  ",
+            "  #.......#.....#.#...#...............#...#  ",
+            "  #############.#.#.###.###################  ",
+            "               A O F   N                     ",
+            "               A A D   M                     ",
+        ];
+        assert_eq!(steps_through_maze(&input, true), 396);
     }
 
     #[test]
